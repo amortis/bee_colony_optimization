@@ -17,6 +17,8 @@ class Bee(ABC):
         self.solution = solution
         self.fitness_function = fitness_function
         self.fitness = self.calculate_fitness()
+        # Счетчик неудачных исследований
+        self.trial = 0
 
     def calculate_fitness(self):
         """

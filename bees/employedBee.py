@@ -9,29 +9,49 @@ class EmployedBee(Bee):
     def explore(self, other_solutions):
         """
         Рабочая пчела исследует окрестность текущего решения, пытаясь найти лучшее.
-
-        :param other_solutions: Список других решений, которые могут быть использованы для исследования.
-        :return: Возвращает True, если найдено лучшее решение, иначе False.
         """
-        # Выбираем случайное решение из списка других решений
-        partner_solution = random.choice(other_solutions)
+        # 1. Выбираем случайного партнера (исключая текущую пчелу)
+        partner = random.choice([bee for bee in other_solutions if bee != self])
 
-        # Генерируем новое решение на основе текущего и партнерского
-        new_solution = self.generate_new_solution(partner_solution)
+        # 2. Генерируем новое решение через комбинацию с партнером
+        new_solution = self.generate_new_solution(partner.solution)
 
-        # Обновляем текущее решение, если новое лучше
-        return self.update_solution(new_solution)
+        # 3. Жадный выбор
+        new_fitness = self.fitness_function(new_solution)
+        if new_fitness > self.fitness:
+            self.solution = new_solution
+            self.fitness = new_fitness
+            self.trial = 0
+            return True
+        else:
+            self.trial += 1
+            return False
 
     def generate_new_solution(self, partner_solution):
         """
         Генерирует новое решение на основе текущего и партнерского решения.
-        Перестановка двух городов в маршруте.
+        1. Выбор случайного сегмента из текущего решения
+        2. Заполнение остального из партнерского решения
 
         :param partner_solution: Решение другой пчелы, используемое для генерации нового решения.
         :return: Новое решение.
         """
-        # Меняем местами два случайных города в маршруте
-        new_solution = self.solution.copy()
-        i, j = random.sample(range(len(new_solution)), 2)
-        new_solution[i], new_solution[j] = new_solution[j], new_solution[i]
+        size = len(self.solution)
+        new_solution = [-1] * size
+
+        # Выбираем случайный отрезок (минимум 2 города)
+        start = random.randint(0, size - 2)
+        end = random.randint(start + 1, min(start + size // 2, size))
+
+        # Копируем сегмент из текущего решения
+        new_solution[start:end] = self.solution[start:end]
+
+        # Заполняем остальное из партнерского решения (порядок сохранен)
+        ptr = 0
+        for i in range(size):
+            if new_solution[i] == -1:
+                while partner_solution[ptr] in new_solution:
+                    ptr += 1
+                new_solution[i] = partner_solution[ptr]
+
         return new_solution

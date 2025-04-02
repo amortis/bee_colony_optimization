@@ -3,7 +3,7 @@ from bees import EmployedBee
 
 
 class ABCAlgorithm:
-    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, distance_matrix):
+    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit):
         """
         Инициализация алгоритма.
 
@@ -13,7 +13,6 @@ class ABCAlgorithm:
         :param num_employed_bees: Количество рабочих пчел.
         :param num_onlooker_bees: Количество пчел-наблюдателей.
         :param limit: Максимальное количество неудачных попыток улучшения решения.
-        :param distance_matrix: Матрица расстояний между городами.
         """
         self.fitness_function = fitness_function
         self.lb = lb
@@ -30,9 +29,6 @@ class ABCAlgorithm:
         # Лучшее решение
         self.best_solution = None
         self.best_fitness = float('-inf')
-
-        # Матрица расстояний
-        self.distance_matrix = distance_matrix
 
     def initialize_population(self) -> None:
         """
@@ -59,15 +55,8 @@ class ABCAlgorithm:
             if is_improved and bee.fitness > self.best_fitness:
                 self.best_solution = bee.solution
                 self.best_fitness = bee.fitness
+            else:
+                bee.trial += 1
 
-    def calculate_route_distance(self, solution) -> int:
-        """
-        Вычисление длины маршрута.
-        :param solution:
-        :return:
-        """
-        total_distance = 0
-        for i in range(len(solution) - 1):
-            total_distance += self.distance_matrix[solution[i]][solution[i + 1]]
-        total_distance += self.distance_matrix[solution[-1]][solution[0]]
-        return total_distance
+
+
