@@ -84,3 +84,14 @@ class ABCAlgorithm:
 
             # Добавляем пчелу в массив новых решений
             self.onlooker_bees.append(onlooker)
+
+        self.upgrade_solutions()
+
+    def upgrade_solutions(self):
+        """
+        Обновляет лучшее решение.
+        """
+        for bee in self.employed_bees:
+            if bee.fitness > self.best_fitness:
+                self.best_solution = bee.solution
+                self.best_fitness = bee.fitness
