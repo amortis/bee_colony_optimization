@@ -1,5 +1,5 @@
 import random
-from bees import EmployedBee
+from bees import EmployedBee, OnlookerBee
 
 
 class ABCAlgorithm:
@@ -58,5 +58,29 @@ class ABCAlgorithm:
             else:
                 bee.trial += 1
 
+    def onlooker_bee_phase(self):
+        """
+        Фаза пчел-наблюдателей. Выбирает решения на основе вероятности и пытается их улучшить.
+        """
+        if not self.employed_bees:
+            return
+        # 1. Подготовка списка решений и их фитнес-значений
+        solutions = [bee.solution for bee in self.employed_bees]
+        # Значения фитнеса хранятся в классах пчел
 
+        # 2. Вычисление вероятностей выбора
+        # Данный шаг уже предусмотрен в классе Bee
 
+        # 3. Создаем временный список для новых решений
+        # у нас уже есть для этого self.onlooker_bees
+
+        # 4. Каждая пчела-наблюдатель выбирает и улучшает решение
+        for bee_index in range(self.num_onlooker_bees):
+            # Создаем пчелу-наблюдателя с случайным начальным решением
+            onlooker = OnlookerBee(random.choice(solutions), self.fitness_function)
+
+            # Пчела выбирает и улучшает решение
+            improved = onlooker.explore(solutions)
+
+            # Добавляем пчелу в массив новых решений
+            self.onlooker_bees.append(onlooker)
