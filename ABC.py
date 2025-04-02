@@ -1,5 +1,7 @@
 import random
 from bees import EmployedBee
+import matplotlib.pyplot as plt
+import networkx as nx
 
 
 class ABCAlgorithm:
@@ -57,6 +59,9 @@ class ABCAlgorithm:
                 self.best_fitness = bee.fitness
             else:
                 bee.trial += 1
+
+
+
 
 
 
