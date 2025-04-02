@@ -1,37 +1,38 @@
 from ABC import ABCAlgorithm
-# Пример фитнес-функции для задачи коммивояжёра
-def fitness_function(solution):
+
+# Фитнес-функция
+def fitness_function(solution, distance_matrix):
     total_distance = 0
     for i in range(len(solution) - 1):
-        city_a = i
-        city_b = i + 1
-        total_distance += distance_matrix[city_a][city_b]
-    # Добавляем расстояние от последнего города к первому (замыкаем маршрут)
+        total_distance += distance_matrix[solution[i]][solution[i + 1]]
     total_distance += distance_matrix[solution[-1]][solution[0]]
-    return 1 / total_distance  # Фитнес = 1 / длина_маршрута
-
-# Параметры алгоритма
-lb = 0  # Нижняя граница (например, минимальный номер города)
-ub = 3  # Верхняя граница (например, максимальный номер города)
-num_employed_bees = 10  # Количество рабочих пчел
-num_onlooker_bees = 10  # Количество пчел-наблюдателей
-limit = 5  # Максимальное количество неудачных попыток
-
+    return 1 / total_distance
+# Пример матрицы расстояний для 4 городов
 distance_matrix = [
-    [0, 10, 15, 20],  # Расстояния от города 0
-    [10, 0, 35, 25],   # Расстояния от города 1
-    [15, 35, 0, 30],   # Расстояния от города 2
-    [20, 25, 30, 0]    # Расстояния от города 3
+    [0, 10, 15, 20],
+    [10, 0, 35, 25],
+    [15, 35, 0, 30],
+    [20, 25, 30, 0]
 ]
 
-# Создаем алгоритм
-abc_algorithm = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit)
+# Параметры алгоритма
+lb = 0  # Нумерация городов с 0
+ub = len(distance_matrix) - 1
+num_employed_bees = 10
+num_onlooker_bees = 10
+limit = 5
 
-# Инициализируем популяцию
-abc_algorithm.initialize_population()
+# Создаем и запускаем алгоритм
+abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit)
+abc.initialize_population()
+abc.employed_bee_phase()
 
-# Выполняем фазу занятых пчел
-abc_algorithm.employed_bee_phase()
+# Выводим результаты
+print("Лучший маршрут:", abc.best_solution)
+print("Длина маршрута:", abc.calculate_route_distance(abc.best_solution))
+print("Фитнес:", abc.best_fitness)
 
-print("Лучшее решение после фазы занятых пчел:", abc_algorithm.best_solution)
-print("Фитнес лучшего решения:", abc_algorithm.best_fitness)
+# Выводим информацию по всем пчелам
+print("\nДетали по рабочим пчелам:")
+for i, bee in enumerate(abc.employed_bees):
+    print(f"Пчела {i}: Маршрут {bee.solution}, Длина {abc.calculate_route_distance(bee.solution)}, Фитнес {bee.fitness}, Неудач {bee.trial}")
