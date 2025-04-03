@@ -1,5 +1,6 @@
 from ABC import ABCAlgorithm
 
+
 # Фитнес-функция
 def fitness_function(solution):
     total_distance = 0
@@ -7,6 +8,7 @@ def fitness_function(solution):
         total_distance += DISTANCE_MATRIX[solution[i]][solution[i + 1]]
     total_distance += DISTANCE_MATRIX[solution[-1]][solution[0]]
     return 1 / total_distance  # Чем больше - тем лучше
+
 
 def calculate_route_distance(solution) -> int:
     """Вычисление длины маршрута."""
@@ -33,20 +35,20 @@ DISTANCE_MATRIX = [
 # Параметры алгоритма
 lb = 0  # Нумерация городов с 0
 ub = len(DISTANCE_MATRIX) - 1
-num_employed_bees = 100
-num_onlooker_bees = 100
+num_employed_bees = 50
+num_onlooker_bees = 50
 limit = 10  # Максимальное количество неудач для одной пчелы
+max_iterations = 500
 
 # Инициализация и запуск
 abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit)
-abc.initialize_population()
-abc.employed_bee_phase()
 
+#abc.employed_bee_phase()
 # Результаты
-print("Employed Bee Phase -----------")
-print("Лучший маршрут:", abc.best_solution)
-print("Длина маршрута:", calculate_route_distance(abc.best_solution))
-print("Фитнес:", abc.best_fitness)
+# print("Employed Bee Phase -----------")
+# print("Лучший маршрут:", abc.best_solution)
+# print("Длина маршрута:", calculate_route_distance(abc.best_solution))
+# print("Фитнес:", abc.best_fitness)
 
 #Информация по пчелам (с trial)
 #print("\nДетали по рабочим пчелам:")
@@ -56,12 +58,12 @@ print("Фитнес:", abc.best_fitness)
 #           f"Фитнес {bee.fitness}, "
 #           f"Неудач {bee.trial}")
 
-abc.onlooker_bee_phase()
+#abc.onlooker_bee_phase()
 # Результаты
-print("\nOnLooker Bee Phase -----------")
-print("Лучший маршрут:", abc.best_solution)
-print("Длина маршрута:", calculate_route_distance(abc.best_solution))
-print("Фитнес:", abc.best_fitness)
+# print("\nOnLooker Bee Phase -----------")
+# print("Лучший маршрут:", abc.best_solution)
+# print("Длина маршрута:", calculate_route_distance(abc.best_solution))
+# print("Фитнес:", abc.best_fitness)
 
 
 # Информация по пчелам (с trial)
@@ -73,3 +75,10 @@ print("Фитнес:", abc.best_fitness)
 #           f"Неудач {bee.trial}")
 
 #abc.visualisation()
+
+
+best_solution, best_fitness = abc.run_algorithm(max_iterations)
+print("\nРезультаты:")
+print("Лучший маршрут:", best_solution)
+print("Длина маршрута:", calculate_route_distance(best_solution))
+print("Фитнес:", best_fitness)

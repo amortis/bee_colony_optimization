@@ -25,7 +25,6 @@ class ABCAlgorithm:
         # Инициализация популяции пчел
         self.employed_bees = []
         self.onlooker_bees = []
-        self.scout_bees = []
 
         # Лучшее решение
         self.best_solution = None
@@ -33,8 +32,14 @@ class ABCAlgorithm:
 
         # Для визуализации
         self.history_on_looker_phase = []
+        self.global_history = []
 
-    def initialize_population(self) -> None:
+        # Для вычисления итераций без улучшения
+        self.patience = 50  # Максимальное число итераций без улучшений
+        self.wait = 0  # Счетчик итераций без улучшений
+        self.best_iteration = 0  # Итерация, когда было найдено лучшее решение
+
+    def _initialize_population(self) -> None:
         """
         Инициализация начальной популяции пчел.
         """
@@ -85,6 +90,8 @@ class ABCAlgorithm:
 
             # Пчела выбирает и улучшает решение
             improved = onlooker.explore(solutions)
+            if not improved:
+                onlooker.trial += 1  # Увеличиваем счетчик при неудаче
 
             # Добавляем пчелу в массив новых решений
             self.onlooker_bees.append(onlooker)
@@ -106,4 +113,78 @@ class ABCAlgorithm:
         plt.title("Сходимость алгоритма")
         plt.xlabel("Итерация")
         plt.ylabel("Фитнес")
+        plt.show()
+
+    def scout_bee_phase(self):
+        """
+        Фаза разведчиков: заменяет решения, которые не улучшались дольше limit итераций
+        """
+        for i, bee in enumerate(self.employed_bees):
+            if bee.trial > self.limit:
+                # Генерируем совершенно новое случайное решение
+                new_solution = self._generate_random_solution()
+                new_fitness = self.fitness_function(new_solution)
+
+                # Заменяем "застрявшее" решение
+                self.employed_bees[i].solution = new_solution
+                self.employed_bees[i].fitness = new_fitness
+                self.employed_bees[i].trial = 0
+
+                # Проверяем, не нашли ли мы новое лучшее решение
+                if new_fitness > self.best_fitness:
+                    self.best_solution = new_solution.copy()
+                    self.best_fitness = new_fitness
+
+    def _generate_random_solution(self):
+        """Генерирует полностью случайное решение для задачи коммивояжера"""
+        solution = list(range(self.lb, self.ub + 1))
+        random.shuffle(solution)
+        return solution
+
+    def run_algorithm(self, max_iterations):
+        """
+        Полный цикл выполнения алгоритма
+        """
+        self._initialize_population()
+
+        for iteration in range(max_iterations):
+            old_best = self.best_fitness
+            # Фаза рабочих пчел
+            self.employed_bee_phase()
+
+            # Фаза пчел-наблюдателей
+            self.onlooker_bee_phase()
+
+            # Фаза разведчиков
+            self.scout_bee_phase()
+
+            self.global_history.append(self.best_fitness)
+            # Проверка улучшения
+            if self.best_fitness > old_best:
+                self.wait = 0
+                self.best_iteration = iteration
+            else:
+                self.wait += 1
+
+            # Ранняя остановка
+            if self.wait >= self.patience:
+                print(f"\nEarly stopping at iteration {iteration}")
+                print(f"No improvement for {self.patience} iterations")
+                break
+
+            # Логирование (можно настроить по желанию)
+            if iteration % 3 == 0:
+                print(f"Iteration {iteration}: Best distance = {1 / self.best_fitness:.2f}")
+
+        self.plot_convergence(self.global_history)
+        return self.best_solution, 1 / self.best_fitness
+
+    def plot_convergence(self, history):
+        """
+        Визуализация
+        """
+        plt.plot(history)
+        plt.title("Convergence History")
+        plt.xlabel("Iteration")
+        plt.ylabel("Best Distance")
         plt.show()
