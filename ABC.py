@@ -1,5 +1,6 @@
 import random
 from bees import EmployedBee, OnlookerBee
+import matplotlib.pyplot as plt
 
 
 class ABCAlgorithm:
@@ -29,6 +30,9 @@ class ABCAlgorithm:
         # Лучшее решение
         self.best_solution = None
         self.best_fitness = float('-inf')
+
+        # Для визуализации
+        self.history_on_looker_phase = []
 
     def initialize_population(self) -> None:
         """
@@ -92,6 +96,14 @@ class ABCAlgorithm:
         Обновляет лучшее решение после этапа пчел наблюдателей
         """
         for bee in self.onlooker_bees:
+            self.history_on_looker_phase.append(self.best_fitness)
             if bee.fitness > self.best_fitness:
                 self.best_solution = bee.solution
                 self.best_fitness = bee.fitness
+
+    def visualisation_on_looker_phase(self) -> None:
+        plt.plot(self.history_on_looker_phase)
+        plt.title("Сходимость алгоритма")
+        plt.xlabel("Итерация")
+        plt.ylabel("Фитнес")
+        plt.show()

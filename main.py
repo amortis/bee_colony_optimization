@@ -33,8 +33,8 @@ DISTANCE_MATRIX = [
 # Параметры алгоритма
 lb = 0  # Нумерация городов с 0
 ub = len(DISTANCE_MATRIX) - 1
-num_employed_bees = 400
-num_onlooker_bees = 400
+num_employed_bees = 100
+num_onlooker_bees = 100
 limit = 10  # Максимальное количество неудач для одной пчелы
 
 # Инициализация и запуск
@@ -49,12 +49,12 @@ print("Длина маршрута:", calculate_route_distance(abc.best_solution
 print("Фитнес:", abc.best_fitness)
 
 #Информация по пчелам (с trial)
-print("\nДетали по рабочим пчелам:")
-for i, bee in enumerate(abc.employed_bees):
-    print(f"Пчела {i}: Маршрут {bee.solution}, "
-          f"Длина {calculate_route_distance(bee.solution)}, "
-          f"Фитнес {bee.fitness}, "
-          f"Неудач {bee.trial}")
+#print("\nДетали по рабочим пчелам:")
+# for i, bee in enumerate(abc.employed_bees):
+#     print(f"Пчела {i}: Маршрут {bee.solution}, "
+#           f"Длина {calculate_route_distance(bee.solution)}, "
+#           f"Фитнес {bee.fitness}, "
+#           f"Неудач {bee.trial}")
 
 abc.onlooker_bee_phase()
 # Результаты
@@ -63,17 +63,13 @@ print("Лучший маршрут:", abc.best_solution)
 print("Длина маршрута:", calculate_route_distance(abc.best_solution))
 print("Фитнес:", abc.best_fitness)
 
-best_sol = -1
-best_fit = -1
-# Информация по пчелам (с trial)
-print("\nДетали по пчелам наблюдателями:")
-for i, bee in enumerate(abc.onlooker_bees):
-    if bee.fitness > best_fit:
-        best_sol = bee.solution
-        best_fit = bee.fitness
-    print(f"Пчела {i}: Маршрут {bee.solution}, "
-          f"Длина {calculate_route_distance(bee.solution)}, "
-          f"Фитнес {bee.fitness}, "
-          f"Неудач {bee.trial}")
 
-print(calculate_route_distance(best_sol), best_fit)
+# Информация по пчелам (с trial)
+#print("\nДетали по пчелам наблюдателями:")
+# for i, bee in enumerate(abc.onlooker_bees):
+#     print(f"Пчела {i}: Маршрут {bee.solution}, "
+#           f"Длина {calculate_route_distance(bee.solution)}, "
+#           f"Фитнес {bee.fitness}, "
+#           f"Неудач {bee.trial}")
+
+#abc.visualisation()
