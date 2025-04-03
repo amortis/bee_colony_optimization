@@ -58,7 +58,7 @@ class ABCAlgorithm:
             else:
                 bee.trial += 1
 
-    def onlooker_bee_phase(self):
+    def onlooker_bee_phase(self) -> None:
         """
         Фаза пчел-наблюдателей. Выбирает решения на основе вероятности и пытается их улучшить.
         """
@@ -85,13 +85,13 @@ class ABCAlgorithm:
             # Добавляем пчелу в массив новых решений
             self.onlooker_bees.append(onlooker)
 
-        self.upgrade_solutions()
+        self._upgrade_solutions()
 
-    def upgrade_solutions(self):
+    def _upgrade_solutions(self) -> None:
         """
-        Обновляет лучшее решение.
+        Обновляет лучшее решение после этапа пчел наблюдателей
         """
-        for bee in self.employed_bees:
+        for bee in self.onlooker_bees:
             if bee.fitness > self.best_fitness:
                 self.best_solution = bee.solution
                 self.best_fitness = bee.fitness
