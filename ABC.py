@@ -1,10 +1,15 @@
 import random
+import time
+from datetime import timedelta
+
+import numpy as np
+
 from bees import EmployedBee, OnlookerBee
 import matplotlib.pyplot as plt
 
 
 class ABCAlgorithm:
-    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit):
+    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, seed=42):
         """
         Инициализация алгоритма.
 
@@ -15,6 +20,13 @@ class ABCAlgorithm:
         :param num_onlooker_bees: Количество пчел-наблюдателей.
         :param limit: Максимальное количество неудачных попыток улучшения решения.
         """
+        # Сиды
+        # Фиксируем случайность
+        # random.seed(seed)
+        # np.random.seed(seed)
+        # self.seed = seed
+
+
         self.fitness_function = fitness_function
         self.lb = lb
         self.ub = ub
@@ -35,9 +47,63 @@ class ABCAlgorithm:
         self.global_history = []
 
         # Для вычисления итераций без улучшения
-        self.patience = 50  # Максимальное число итераций без улучшений
+        self.patience = 100  # Максимальное число итераций без улучшений
         self.wait = 0  # Счетчик итераций без улучшений
         self.best_iteration = 0  # Итерация, когда было найдено лучшее решение
+
+        # Отсчет времени
+        self.start_time = None
+        self.end_time = None
+
+    def run_algorithm(self, max_iterations):
+        """
+        Полный цикл выполнения алгоритма
+        """
+        self._initialize_population()
+        self.start_time = time.time()
+
+        for iteration in range(max_iterations):
+            old_best = self.best_fitness
+            # Фаза рабочих пчел
+            self.employed_bee_phase()
+
+            # Фаза пчел-наблюдателей
+            self.onlooker_bee_phase()
+
+            # Фаза разведчиков
+            self.scout_bee_phase()
+
+            self.global_history.append(self.best_fitness)
+            # Проверка улучшения
+            if self.best_fitness > old_best:
+                self.wait = 0
+                self.best_iteration = iteration
+            else:
+                self.wait += 1
+
+            # Ранняя остановка
+            if self.wait >= self.patience:
+                print(f"\nEarly stopping at iteration {iteration}")
+                print(f"No improvement for {self.patience} iterations")
+                break
+
+            # Логирование (можно настроить по желанию)
+            if iteration % 3 == 0:
+                elapsed = self.get_formatted_time()
+                print(f"Iteration {iteration}. Time: {elapsed}. Best distance = {1 / self.best_fitness:.2f}")
+
+        self.plot_convergence(self.global_history)
+        return self.best_solution, self.best_fitness
+
+    def get_formatted_time(self, seconds=None):
+        """Форматирует время в читаемый вид (HH:MM:SS)"""
+        if seconds is None:
+            seconds = self.get_elapsed_time()
+        return str(timedelta(seconds=seconds)).split(".")[0]
+
+    def get_elapsed_time(self):
+        """Возвращает время выполнения в секундах"""
+        return time.time() - self.start_time
 
     def _initialize_population(self) -> None:
         """
@@ -141,43 +207,6 @@ class ABCAlgorithm:
         random.shuffle(solution)
         return solution
 
-    def run_algorithm(self, max_iterations):
-        """
-        Полный цикл выполнения алгоритма
-        """
-        self._initialize_population()
-
-        for iteration in range(max_iterations):
-            old_best = self.best_fitness
-            # Фаза рабочих пчел
-            self.employed_bee_phase()
-
-            # Фаза пчел-наблюдателей
-            self.onlooker_bee_phase()
-
-            # Фаза разведчиков
-            self.scout_bee_phase()
-
-            self.global_history.append(self.best_fitness)
-            # Проверка улучшения
-            if self.best_fitness > old_best:
-                self.wait = 0
-                self.best_iteration = iteration
-            else:
-                self.wait += 1
-
-            # Ранняя остановка
-            if self.wait >= self.patience:
-                print(f"\nEarly stopping at iteration {iteration}")
-                print(f"No improvement for {self.patience} iterations")
-                break
-
-            # Логирование (можно настроить по желанию)
-            if iteration % 3 == 0:
-                print(f"Iteration {iteration}: Best distance = {1 / self.best_fitness:.2f}")
-
-        self.plot_convergence(self.global_history)
-        return self.best_solution, 1 / self.best_fitness
 
     def plot_convergence(self, history):
         """
