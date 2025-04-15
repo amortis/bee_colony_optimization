@@ -13,4 +13,4 @@ def generate_matrix(n: int):
     return distane_matrix
 
 
-print(generate_matrix(150))
+print(generate_matrix(30))

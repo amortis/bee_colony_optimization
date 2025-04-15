@@ -24,13 +24,14 @@ def calculate_route_distance(solution) -> int:
 # Параметры алгоритма
 lb = 0  # Нумерация городов с 0
 ub = len(DISTANCE_MATRIX) - 1
-num_employed_bees = 200
-num_onlooker_bees = 50
+num_employed_bees = 400
+num_onlooker_bees = 100
 limit = 30  # Максимальное количество неудач для одной пчелы
-max_iterations = 3000
+max_iterations = 1500
+patience = 75
 
 # Инициализация и запуск
-abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit)
+abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience)
 
 #abc.employed_bee_phase()
 # Результаты

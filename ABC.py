@@ -1,6 +1,7 @@
 import random
 import time
 from datetime import timedelta
+from distane_matrix import OPTIMAL_LENGTH
 
 import numpy as np
 
@@ -9,7 +10,7 @@ import matplotlib.pyplot as plt
 
 
 class ABCAlgorithm:
-    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, seed=42):
+    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience, seed=42):
         """
         Инициализация алгоритма.
 
@@ -47,7 +48,7 @@ class ABCAlgorithm:
         self.global_history = []
 
         # Для вычисления итераций без улучшения
-        self.patience = 100  # Максимальное число итераций без улучшений
+        self.patience = patience  # Максимальное число итераций без улучшений
         self.wait = 0  # Счетчик итераций без улучшений
         self.best_iteration = 0  # Итерация, когда было найдено лучшее решение
 
@@ -73,7 +74,8 @@ class ABCAlgorithm:
             # Фаза разведчиков
             self.scout_bee_phase()
 
-            self.global_history.append(self.best_fitness)
+            # Добавление данных для визуализации
+            self.global_history.append(1/self.best_fitness - OPTIMAL_LENGTH)
             # Проверка улучшения
             if self.best_fitness > old_best:
                 self.wait = 0
@@ -213,7 +215,7 @@ class ABCAlgorithm:
         Визуализация
         """
         plt.plot(history)
-        plt.title("Convergence History")
-        plt.xlabel("Iteration")
-        plt.ylabel("Best Distance")
+        plt.title("График сходимости")
+        plt.xlabel("Итерация")
+        plt.ylabel("Разница с оптимумом")
         plt.show()
