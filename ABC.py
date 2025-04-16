@@ -1,7 +1,7 @@
 import random
 import time
 from datetime import timedelta
-from distane_matrix import OPTIMAL_LENGTH
+from distane_matrix import OPTIMAL_LENGTH, DISTANCE_MATRIX
 
 import numpy as np
 
@@ -90,11 +90,11 @@ class ABCAlgorithm:
                 break
 
             # Логирование (можно настроить по желанию)
-            if iteration % 3 == 0:
+            if iteration % 50 == 0:
                 elapsed = self.get_formatted_time()
                 print(f"Iteration {iteration}. Time: {elapsed}. Best distance = {1 / self.best_fitness:.2f}")
 
-        self.plot_convergence(self.global_history)
+        #self.plot_convergence(self.global_history)
         return self.best_solution, self.best_fitness
 
     def get_formatted_time(self, seconds=None):
@@ -111,16 +111,167 @@ class ABCAlgorithm:
         """
         Инициализация начальной популяции пчел.
         """
-        for _ in range(self.num_employed_bees):
-            # Генерация случайного решения
-            solution = random.sample(range(self.lb, self.ub + 1), self.ub - self.lb + 1)
+        # Разделяем пчел на три группы для разных методов инициализации
+        num_greedy = self.num_employed_bees // 3
+        num_random = self.num_employed_bees // 3
+        num_christofides = self.num_employed_bees - num_greedy - num_random
+
+        # Инициализация жадным алгоритмом с разными стартовыми точками
+        for i in range(num_greedy):
+            solution = self._greedy_initial_solution(start_city=i)
             employed_bee = EmployedBee(solution, self.fitness_function)
             self.employed_bees.append(employed_bee)
-
-            # Обновление лучшего решения
             if employed_bee.fitness > self.best_fitness:
                 self.best_solution = employed_bee.solution
                 self.best_fitness = employed_bee.fitness
+
+        # Инициализация случайными решениями
+        for _ in range(num_random):
+            solution = self._random_initial_solution()
+            employed_bee = EmployedBee(solution, self.fitness_function)
+            self.employed_bees.append(employed_bee)
+            if employed_bee.fitness > self.best_fitness:
+                self.best_solution = employed_bee.solution
+                self.best_fitness = employed_bee.fitness
+
+        # Инициализация алгоритмом Кристофидеса
+        for _ in range(num_christofides):
+            solution = self._christofides_initial_solution()
+            employed_bee = EmployedBee(solution, self.fitness_function)
+            self.employed_bees.append(employed_bee)
+            if employed_bee.fitness > self.best_fitness:
+                self.best_solution = employed_bee.solution
+                self.best_fitness = employed_bee.fitness
+
+    def _greedy_initial_solution(self, start_city=0):
+        """
+        Генерация начального решения с использованием жадного алгоритма (ближайший сосед).
+        """
+        cities = list(range(self.lb, self.ub + 1))
+        solution = [cities.pop(start_city)]  # Начинаем с заданного города
+
+        while cities:
+            last_city = solution[-1]
+            next_city = min(cities, key=lambda city: DISTANCE_MATRIX[last_city][city])
+            solution.append(next_city)
+            cities.remove(next_city)
+
+        return solution
+
+    def _random_initial_solution(self):
+        """
+        Генерация случайного начального решения.
+        """
+        cities = list(range(self.lb, self.ub + 1))
+        random.shuffle(cities)
+        return cities
+
+    def _christofides_initial_solution(self):
+        """
+        Генерация начального решения с использованием алгоритма Кристофидеса.
+        Это приближенный алгоритм, который гарантирует решение не хуже 1.5 * оптимального.
+        """
+        # 1. Построение минимального остовного дерева
+        n = self.ub - self.lb + 1
+        mst = self._prim_mst()
+        
+        # 2. Нахождение вершин нечетной степени
+        odd_vertices = [i for i in range(n) if len([j for j in range(n) if mst[i][j]]) % 2 == 1]
+        
+        # 3. Построение минимального паросочетания на нечетных вершинах
+        matching = self._min_weight_matching(odd_vertices)
+        
+        # 4. Объединение MST и паросочетания
+        multigraph = [[False] * n for _ in range(n)]
+        for i in range(n):
+            for j in range(n):
+                if mst[i][j] or matching[i][j]:
+                    multigraph[i][j] = True
+                    multigraph[j][i] = True
+        
+        # 5. Нахождение эйлерова цикла
+        euler_tour = self._find_euler_tour(multigraph)
+        
+        # 6. Преобразование в гамильтонов цикл
+        solution = []
+        visited = set()
+        for city in euler_tour:
+            if city not in visited:
+                solution.append(city + self.lb)
+                visited.add(city)
+        
+        return solution
+
+    def _prim_mst(self):
+        """Алгоритм Прима для построения минимального остовного дерева"""
+        n = self.ub - self.lb + 1
+        mst = [[False] * n for _ in range(n)]
+        key = [float('inf')] * n
+        parent = [-1] * n
+        key[0] = 0
+        mst_set = [False] * n
+
+        for _ in range(n):
+            u = min((i for i in range(n) if not mst_set[i]), key=lambda x: key[x])
+            mst_set[u] = True
+
+            if parent[u] != -1:
+                mst[parent[u]][u] = True
+                mst[u][parent[u]] = True
+
+            for v in range(n):
+                if (DISTANCE_MATRIX[u + self.lb][v + self.lb] < key[v] and 
+                    not mst_set[v]):
+                    key[v] = DISTANCE_MATRIX[u + self.lb][v + self.lb]
+                    parent[v] = u
+
+        return mst
+
+    def _min_weight_matching(self, odd_vertices):
+        """Построение минимального паросочетания на нечетных вершинах"""
+        n = self.ub - self.lb + 1
+        matching = [[False] * n for _ in range(n)]
+        visited = set()
+
+        while len(visited) < len(odd_vertices):
+            u = next(v for v in odd_vertices if v not in visited)
+            visited.add(u)
+            
+            min_dist = float('inf')
+            best_v = -1
+            
+            for v in odd_vertices:
+                if v != u and v not in visited:
+                    dist = DISTANCE_MATRIX[u + self.lb][v + self.lb]
+                    if dist < min_dist:
+                        min_dist = dist
+                        best_v = v
+            
+            if best_v != -1:
+                matching[u][best_v] = True
+                matching[best_v][u] = True
+                visited.add(best_v)
+
+        return matching
+
+    def _find_euler_tour(self, multigraph):
+        """Нахождение эйлерова цикла в мультиграфе"""
+        n = len(multigraph)
+        tour = []
+        stack = [0]
+        
+        while stack:
+            u = stack[-1]
+            for v in range(n):
+                if multigraph[u][v]:
+                    multigraph[u][v] = False
+                    multigraph[v][u] = False
+                    stack.append(v)
+                    break
+            else:
+                tour.append(stack.pop())
+        
+        return tour[::-1]
 
     def employed_bee_phase(self) -> None:
         """

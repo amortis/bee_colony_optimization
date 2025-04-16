@@ -93,7 +93,7 @@ def aco_tsp(distance_matrix, n_ants=30, n_iterations=100, alpha=1, beta=3, evapo
         for path, distance in zip(paths, distances):
             for i in range(n):
                 pheromone[path[i]][path[i + 1]] += Q / distance
-                pheromone[path[i + 1]][path[i]] += Q / distance  # Если матрица симметрична
+
 
     return best_path, best_distance
 

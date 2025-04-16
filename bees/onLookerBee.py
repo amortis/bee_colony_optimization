@@ -2,6 +2,7 @@ import math
 
 from bees.bee import Bee
 import random
+from distane_matrix import DISTANCE_MATRIX
 
 
 class OnlookerBee(Bee):
@@ -40,9 +41,11 @@ class OnlookerBee(Bee):
         # Преобразуем fitness в вероятности (используем softmax)
         max_fitness = max(fitness_values) if fitness_values else 1
         exp_values = [math.exp((f - max_fitness) * 10) for f in fitness_values]  # Масштабируем разницу
-        total = sum(exp_values)
+        total_fitness = sum(exp_values)
 
-        return [exp / total for exp in exp_values] if total > 0 else [1 / len(solutions)] * len(solutions)
+        probabilities = [f / total_fitness for f in fitness_values] if total_fitness > 0 else [1 / len(
+            fitness_values)] * len(fitness_values)
+        return probabilities
 
     def _select_solution_based_on_probability(self, solutions, probabilities):
         """Выбирает решение для исследования на основе вероятностей"""
@@ -53,11 +56,18 @@ class OnlookerBee(Bee):
     def _generate_new_solution(self, base_solution):
         """Генерирует модифицированное решение на основе базового"""
         new_solution = base_solution.copy()
-
-        # Применяем комбинацию мутаций специально для TSP
-        mutation_type = random.choice(["inversion", "swap", "shift"])
-
-        if mutation_type == "inversion":
+        if self.trial > 10:  # Если решение долго не улучшается
+            mutation_weights = [0.1, 0.1, 0.1, 0.7]  # Больше фокуса на 2-opt
+        else:
+            mutation_weights = [0.3, 0.1, 0.2, 0.4]  # Более разнообразные мутации
+        mutation_type = random.choices(
+            ["inversion", "swap", "shift", "2-opt"],
+            weights=mutation_weights,  # Чаще используем inversion и 2-opt
+        )[0]
+        if mutation_type == "2-opt":
+            # Локальный поиск 2-opt (эффективен для TSP)
+            new_solution = self._iterative_two_opt(new_solution)
+        elif mutation_type == "inversion":
             # Инверсия случайного сегмента
             i, j = sorted(random.sample(range(len(new_solution)), 2))
             new_solution[i:j + 1] = reversed(new_solution[i:j + 1])
@@ -76,7 +86,8 @@ class OnlookerBee(Bee):
         """Применяет жадный выбор с обновлением состояния"""
         new_fitness = self.fitness_function(new_solution)
 
-        if new_fitness > self.fitness:
+        improvement_threshold = 0.05  # 5% улучшение
+        if new_fitness > self.fitness * (1 + improvement_threshold):
             self.solution = new_solution
             self.fitness = new_fitness
             self.trial = 0
@@ -85,5 +96,18 @@ class OnlookerBee(Bee):
             self.trial += 1
             return False
 
-
+    def _iterative_two_opt(self, solution):
+        improved = True
+        while improved:
+            improved = False
+            for i in range(1, len(solution) - 2):
+                for j in range(i + 1, len(solution)):
+                    if j - i == 1:
+                        continue
+                    new_solution = solution[:]
+                    new_solution[i:j] = reversed(new_solution[i:j])
+                    if self.fitness_function(new_solution) > self.fitness_function(solution):
+                        solution = new_solution
+                        improved = True
+        return solution
 
