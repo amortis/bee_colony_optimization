@@ -56,14 +56,18 @@ class OnlookerBee(Bee):
     def _generate_new_solution(self, base_solution):
         """Генерирует модифицированное решение на основе базового"""
         new_solution = base_solution.copy()
+        
+        # Адаптивные веса мутаций в зависимости от trial
         if self.trial > 10:  # Если решение долго не улучшается
-            mutation_weights = [0.1, 0.1, 0.1, 0.7]  # Больше фокуса на 2-opt
+            mutation_weights = [0.05, 0.05, 0.1, 0.8]  # Больше фокуса на 2-opt и 3-opt
         else:
-            mutation_weights = [0.3, 0.1, 0.2, 0.4]  # Более разнообразные мутации
+            mutation_weights = [0.2, 0.1, 0.1, 0.6]  # Более разнообразные мутации
+        
         mutation_type = random.choices(
             ["inversion", "swap", "shift", "2-opt"],
-            weights=mutation_weights,  # Чаще используем inversion и 2-opt
+            weights=mutation_weights,
         )[0]
+        
         if mutation_type == "2-opt":
             # Локальный поиск 2-opt (эффективен для TSP)
             new_solution = self._iterative_two_opt(new_solution)
@@ -79,7 +83,10 @@ class OnlookerBee(Bee):
             # Сдвиг случайного города
             city = new_solution.pop(random.randint(0, len(new_solution) - 1))
             new_solution.insert(random.randint(0, len(new_solution)), city)
-
+        
+        # Применяем локальный поиск 2-opt после любой мутации
+        new_solution = self._iterative_two_opt(new_solution)
+        
         return new_solution
 
     def _greedy_selection(self, new_solution):

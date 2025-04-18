@@ -3,8 +3,8 @@ from ortools.constraint_solver import pywrapcp
 from distane_matrix import DISTANCE_MATRIX
 
 
-def solve_tsp_with_ortools(distance_matrix):
-    manager = pywrapcp.RoutingIndexManager(len(distance_matrix), 1, 0)
+def solve_tsp_with_ortools(distance_matrix, start_node=0):
+    manager = pywrapcp.RoutingIndexManager(len(distance_matrix), 1, start_node)
     routing = pywrapcp.RoutingModel(manager)
 
     def distance_callback(from_index, to_index):
@@ -20,7 +20,7 @@ def solve_tsp_with_ortools(distance_matrix):
     solution = routing.SolveWithParameters(search_parameters)
 
     if solution:
-        index = routing.Start(0)
+        index = routing.Start(start_node)
         path = []
         while not routing.IsEnd(index):
             path.append(manager.IndexToNode(index))
@@ -29,7 +29,12 @@ def solve_tsp_with_ortools(distance_matrix):
         return path, solution.ObjectiveValue()
     return None, None
 
-print(solve_tsp_with_ortools(DISTANCE_MATRIX))
+anss = []
+#for index in (0, 30):
+path, ans = solve_tsp_with_ortools(DISTANCE_MATRIX, 0)
+print(path, ans)
+    #anss.append(ans)
+#print(min(anss))
 
 import numpy as np
 import random

@@ -63,12 +63,17 @@ class EmployedBee(Bee):
 
     def generate_new_solution(self, partner_solution):
         """
-        Генерация нового решения с использованием различных операторов кроссовера.
+        Генерация нового решения с использованием улучшенных операторов кроссовера.
         """
-        # Выбираем оператор кроссовера с вероятностями
+        # Адаптивные веса кроссовера в зависимости от trial
+        if self.trial > 5:
+            crossover_weights = [0.6, 0.2, 0.1, 0.1]  # Больше фокуса на PMX
+        else:
+            crossover_weights = [0.4, 0.3, 0.2, 0.1]  # Более разнообразные операторы
+        
         crossover_type = random.choices(
             ['pmx', 'ox', 'cx', 'simple'],
-            weights=[0.4, 0.3, 0.2, 0.1]
+            weights=crossover_weights
         )[0]
 
         if crossover_type == 'pmx':

@@ -90,11 +90,11 @@ class ABCAlgorithm:
                 break
 
             # Логирование (можно настроить по желанию)
-            if iteration % 50 == 0:
+            if iteration % 5 == 0:
                 elapsed = self.get_formatted_time()
                 print(f"Iteration {iteration}. Time: {elapsed}. Best distance = {1 / self.best_fitness:.2f}")
 
-        #self.plot_convergence(self.global_history)
+        self.plot_convergence(self.global_history)
         return self.best_solution, self.best_fitness
 
     def get_formatted_time(self, seconds=None):
@@ -112,18 +112,18 @@ class ABCAlgorithm:
         Инициализация начальной популяции пчел.
         """
         # Разделяем пчел на три группы для разных методов инициализации
-        num_greedy = self.num_employed_bees // 3
-        num_random = self.num_employed_bees // 3
-        num_christofides = self.num_employed_bees - num_greedy - num_random
+        #num_greedy = self.num_employed_bees // 3
+        num_random = self.num_employed_bees
+        #num_christofides = self.num_employed_bees - num_greedy - num_random
 
         # Инициализация жадным алгоритмом с разными стартовыми точками
-        for i in range(num_greedy):
-            solution = self._greedy_initial_solution(start_city=i)
-            employed_bee = EmployedBee(solution, self.fitness_function)
-            self.employed_bees.append(employed_bee)
-            if employed_bee.fitness > self.best_fitness:
-                self.best_solution = employed_bee.solution
-                self.best_fitness = employed_bee.fitness
+        # for _ in range(num_greedy):
+        #     solution = self._greedy_initial_solution()
+        #     employed_bee = EmployedBee(solution, self.fitness_function)
+        #     self.employed_bees.append(employed_bee)
+        #     if employed_bee.fitness > self.best_fitness:
+        #         self.best_solution = employed_bee.solution
+        #         self.best_fitness = employed_bee.fitness
 
         # Инициализация случайными решениями
         for _ in range(num_random):
@@ -135,13 +135,13 @@ class ABCAlgorithm:
                 self.best_fitness = employed_bee.fitness
 
         # Инициализация алгоритмом Кристофидеса
-        for _ in range(num_christofides):
-            solution = self._christofides_initial_solution()
-            employed_bee = EmployedBee(solution, self.fitness_function)
-            self.employed_bees.append(employed_bee)
-            if employed_bee.fitness > self.best_fitness:
-                self.best_solution = employed_bee.solution
-                self.best_fitness = employed_bee.fitness
+        # for _ in range(num_christofides):
+        #     solution = self._christofides_initial_solution()
+        #     employed_bee = EmployedBee(solution, self.fitness_function)
+        #     self.employed_bees.append(employed_bee)
+        #     if employed_bee.fitness > self.best_fitness:
+        #         self.best_solution = employed_bee.solution
+        #         self.best_fitness = employed_bee.fitness
 
     def _greedy_initial_solution(self, start_city=0):
         """
