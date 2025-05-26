@@ -24,10 +24,10 @@ def calculate_route_distance(solution) -> int:
 # Параметры алгоритма
 lb = 0  # Нумерация городов с 0
 ub = len(DISTANCE_MATRIX) - 1
-num_employed_bees = 400
-num_onlooker_bees = 100
-limit = 30  # Максимальное количество неудач для одной пчелы
-max_iterations = 1500
+num_employed_bees = 200
+num_onlooker_bees = 60
+limit = 20  # Максимальное количество неудач для одной пчелы
+max_iterations = 1000
 patience = 75
 
 # Инициализация и запуск
