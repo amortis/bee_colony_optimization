@@ -141,6 +141,7 @@ class ABCAlgorithm:
         """
         if not self.employed_bees:
             return
+        self.onlooker_bees.clear() # Очищаем список от пчёл прошлой итерации
         # 1. Подготовка списка решений и их фитнес-значений
         solutions = [bee.solution for bee in self.employed_bees]
         # Значения фитнеса хранятся в классах пчел
