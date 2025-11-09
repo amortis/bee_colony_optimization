@@ -169,8 +169,20 @@ class ABCAlgorithm:
         """
         Обновляет лучшее решение после этапа пчел наблюдателей
         """
-        self.history_on_looker_phase.append(self.global_history[-1] if self.global_history else self.best_fitness)
-    
+        # 1. Найдём лучшую пчелу-наблюдателя
+        best_onlooker = max(self.onlooker_bees, key=lambda b: b.fitness)
+        
+        # 2. Найдём худшую рабочую пчелу
+        worst_employed_idx = min(range(len(self.employed_bees)), 
+                                key=lambda i: self.employed_bees[i].fitness)
+        
+        # 3. Если наблюдатель лучше худшей рабочей — заменяем
+        if best_onlooker.fitness > self.employed_bees[worst_employed_idx].fitness:
+            self.employed_bees[worst_employed_idx].solution = best_onlooker.solution.copy()
+            self.employed_bees[worst_employed_idx].fitness = best_onlooker.fitness
+            self.employed_bees[worst_employed_idx].trial = 0
+        
+        # 4. Обновляем глобальное лучшее решение
         for bee in self.onlooker_bees:
             if bee.fitness > self.best_fitness:
                 self.best_solution = bee.solution.copy()
