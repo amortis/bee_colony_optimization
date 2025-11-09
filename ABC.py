@@ -158,8 +158,6 @@ class ABCAlgorithm:
 
             # Пчела выбирает и улучшает решение
             improved = onlooker.explore(solutions)
-            if not improved:
-                onlooker.trial += 1  # Увеличиваем счетчик при неудаче
 
             # Добавляем пчелу в массив новых решений
             self.onlooker_bees.append(onlooker)
