@@ -30,6 +30,10 @@ limit = 20  # Максимальное количество неудач для 
 max_iterations = 1000
 patience = 75
 
+# проверки матрицы
+assert len(DISTANCE_MATRIX) > 0, "Матрица пустая"
+assert all(len(row) == len(DISTANCE_MATRIX) for row in DISTANCE_MATRIX), "Матрица не квадратная"
+
 # Инициализация и запуск
 abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience)
 
