@@ -105,7 +105,7 @@ class ABCAlgorithm:
 
     def get_elapsed_time(self):
         """Возвращает время выполнения в секундах"""
-        return time.time() - self.start_time
+        return time.time() - self.start_time # type: ignore
 
     def _initialize_population(self) -> None:
         """

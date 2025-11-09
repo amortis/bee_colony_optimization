@@ -6,7 +6,7 @@ class EmployedBee(Bee):
     """
         Класс, представляющий рабочую пчелу. Рабочие пчелы отвечают за улучшение текущих решений.
     """
-    def explore(self, other_solutions):
+    def explore(self, other_solutions): # type: ignore
         """
         Рабочая пчела исследует окрестность текущего решения, пытаясь найти лучшее.
         """
@@ -50,6 +50,7 @@ class EmployedBee(Bee):
         ptr = 0
         for i in range(size):
             if new_solution[i] == -1:
+                used = set(self.solution[start:end])  # Создаём множество для O(1) поиска
                 while partner_solution[ptr] in new_solution:
                     ptr += 1
                 new_solution[i] = partner_solution[ptr]
