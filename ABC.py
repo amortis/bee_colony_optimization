@@ -169,10 +169,11 @@ class ABCAlgorithm:
         """
         Обновляет лучшее решение после этапа пчел наблюдателей
         """
+        self.history_on_looker_phase.append(self.global_history[-1] if self.global_history else self.best_fitness)
+    
         for bee in self.onlooker_bees:
-            self.history_on_looker_phase.append(self.best_fitness)
             if bee.fitness > self.best_fitness:
-                self.best_solution = bee.solution
+                self.best_solution = bee.solution.copy()
                 self.best_fitness = bee.fitness
 
     def visualisation_on_looker_phase(self) -> None:
