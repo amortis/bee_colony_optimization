@@ -95,7 +95,7 @@ class ABCAlgorithm:
                 break
 
             # Логирование (можно настроить по желанию)
-            if iteration % 3 == 0:
+            if iteration % 20 == 0:
                 elapsed = self.get_formatted_time()
                 print(f"Iteration {iteration}. Time: {elapsed}. Best distance = {1 / self.best_fitness:.2f}")
 

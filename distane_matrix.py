@@ -1,5 +1,7 @@
 import numpy as np
 from scipy.spatial import distance_matrix
+from generated_matrix import GENERATED_MATRIX
+from tsp_task import optimal, matrix
 
 # Файл с матрицей
 
@@ -27,6 +29,9 @@ DISTANCE_MATRIX = [
     [62, 41, 65, 56, 72, 55, 67, 43, 55, 42, 40, 45, 35, 48, 61, 38, 32, 27, 0, 41],
     [53, 36, 58, 49, 65, 48, 60, 36, 48, 35, 33, 38, 28, 41, 54, 31, 25, 34, 41, 0]
 ]
+
+# для теста
+DISTANCE_MATRIX = GENERATED_MATRIX
 
 # Answer
 # ([0, 16, 7, 20, 15, 5, 21, 10, 18, 4, 23, 6, 14, 2, 25, 22, 12, 27, 8, 28, 11, 3, 1, 29, 19, 17, 26, 13, 9, 24, 0], 226)
@@ -56,3 +61,7 @@ import pandas as pd
 
 df = pd.DataFrame(DISTANCE_MATRIX)
 print(df.to_string())  # Полноценный вывод без сокращений
+
+# elitsp51
+OPTIMAL_LENGTH  = optimal
+DISTANCE_MATRIX = matrix
