@@ -19,7 +19,7 @@ def load_tsplib_instance(filename):
     return distance_matrix, optimal
 
 # Использование:
-matrix, optimal = load_tsplib_instance("st70.tsp")
+matrix, optimal = load_tsplib_instance("matrix_task/st70.tsp")
 optimal = 675
 print(f"Оптимальное решение из TSPLIB: {optimal}")
 print(matrix)

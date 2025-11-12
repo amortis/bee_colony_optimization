@@ -1,6 +1,6 @@
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
-from generated_matrix import GENERATED_MATRIX
+from matrix_task.generated_matrix import GENERATED_MATRIX
 
 def solve_with_ortools(distance_matrix, timeout=30):
     """Решает TSP через OR-Tools с ограничением по времени"""

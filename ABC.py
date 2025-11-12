@@ -1,7 +1,7 @@
 import random
 import time
 from datetime import timedelta
-from distane_matrix import OPTIMAL_LENGTH
+from matrix_task.distane_matrix import OPTIMAL_LENGTH
 
 import numpy as np
 

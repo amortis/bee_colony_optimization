@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.spatial import distance_matrix
-from generated_matrix import GENERATED_MATRIX
-from tsp_task import optimal, matrix
+from matrix_task.generated_matrix import GENERATED_MATRIX
+from matrix_task.tsp_task import optimal, matrix
 
 # Файл с матрицей
 
