@@ -56,3 +56,17 @@ class EmployedBee(Bee):
                 new_solution[i] = partner_solution[ptr]
 
         return new_solution
+
+    # --- НОВАЯ АСИНХРОННАЯ ВЕРСИЯ ---
+    def explore_async(self, other_solutions, fitness_function): # type: ignore
+        """
+        Асинхронная версия explore, возвращает (is_improved, new_solution, new_fitness).
+        """
+        partner = random.choice([bee for bee in other_solutions if bee != self])
+        new_solution = self.generate_new_solution(partner.solution)
+        new_fitness = fitness_function(new_solution) # Используем переданную функцию
+
+        if new_fitness > self.fitness:
+            return True, new_solution, new_fitness
+        else:
+            return False, self.solution, self.fitness # Возвращаем старые значения, если не улучшено

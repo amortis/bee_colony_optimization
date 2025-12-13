@@ -14,7 +14,7 @@ def load_tsplib_instance(filename):
     
     for i in range(dimension):
         for j in range(dimension):
-            distance_matrix[i][j] = problem._wfunc(i+1, j+1)  # TSPLIB индекс с 1
+            distance_matrix[i][j] = problem._wfunc(i+1, j+1)  # type: ignore # TSPLIB индекс с 1
     
     return distance_matrix, optimal
 

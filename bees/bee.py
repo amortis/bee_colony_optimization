@@ -7,7 +7,7 @@ class Bee(ABC):
     Все типы пчел (рабочие, наблюдатели, разведчики) наследуются от этого класса.
     """
 
-    def __init__(self, solution, fitness_function):
+    def __init__(self, solution, fitness_function, initial_fitness=None):
         """
         Инициализация пчелы.
 
@@ -16,7 +16,10 @@ class Bee(ABC):
         """
         self.solution = solution
         self.fitness_function = fitness_function
-        self.fitness = self.calculate_fitness()
+        if initial_fitness is not None:
+            self.fitness = initial_fitness
+        else:
+            self.fitness = self.calculate_fitness()
         # Счетчик неудачных исследований
         self.trial = 0
 
@@ -50,3 +53,11 @@ class Bee(ABC):
             self.fitness = new_fitness
             return True
         return False
+
+    # --- НОВЫЙ АБСТРАКТНЫЙ МЕТОД ДЛЯ АСИНХРОННОГО ВАРИАНТА ---
+    @abstractmethod
+    def explore_async(self, other_solutions, fitness_function):
+        """
+        Асинхронная версия explore, возвращает (is_improved, new_solution, new_fitness).
+        """
+        pass

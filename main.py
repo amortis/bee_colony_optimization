@@ -16,18 +16,18 @@ def calculate_route_distance(solution) -> int:
     for i in range(len(solution) - 1):
         total_distance += DISTANCE_MATRIX[solution[i]][solution[i + 1]]
     total_distance += DISTANCE_MATRIX[solution[-1]][solution[0]]
-    return total_distance
+    return total_distance # type: ignore
 
 
 
 # Параметры алгоритма
 lb = 0  # Нумерация городов с 0
 ub = len(DISTANCE_MATRIX) - 1
-num_employed_bees = 200
-num_onlooker_bees = 300
+num_employed_bees = 130
+num_onlooker_bees = 400
 limit = 100  # Максимальное количество неудач для одной пчелы
 max_iterations = 3500
-patience = 500
+patience = 100
 
 # проверки матрицы
 assert len(DISTANCE_MATRIX) > 0, "Матрица пустая"
