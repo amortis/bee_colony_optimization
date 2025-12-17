@@ -1,7 +1,7 @@
 import random
 import time
 from datetime import timedelta
-from matrix_task.distane_matrix import OPTIMAL_LENGTH
+
 
 import numpy as np
 
@@ -19,7 +19,7 @@ def compute_fitness_task(args):
     return fitness_func(solution)
 
 class ABCAlgorithm:
-    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience, num_workers=None, seed=42):
+    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience, optimal_length, num_workers=None, seed=42):
         """
         Инициализация алгоритма.
 
@@ -53,6 +53,7 @@ class ABCAlgorithm:
         self.num_employed_bees = num_employed_bees
         self.num_onlooker_bees = num_onlooker_bees
         self.limit = limit
+        self.optimal_length = optimal_length
 
         # Инициализация популяции пчел
         self.employed_bees = []
@@ -89,7 +90,7 @@ class ABCAlgorithm:
                 self.employed_bee_phase()
                 self.onlooker_bee_phase()
                 self.scout_bee_phase()
-                self.global_history.append(1/self.best_fitness - OPTIMAL_LENGTH)
+                self.global_history.append(1/self.best_fitness - self.optimal_length)
 
                 if self.best_fitness > old_best:
                     self.wait = 0

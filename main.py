@@ -1,6 +1,11 @@
 from ABC import ABCAlgorithm
-from matrix_task.distane_matrix import DISTANCE_MATRIX
+from matrix_task.tsp_task import load_tsplib_instance
 
+
+# Загружаем матрицу расстояний из TSPLIB-задачи
+# При желании можно заменить файл на другой, например: "matrix_task/eil51.tsp"
+DISTANCE_MATRIX, OPTIMAL_VALUE = load_tsplib_instance("matrix_task/st70.tsp")
+print(OPTIMAL_VALUE)
 
 # Фитнес-функция
 def fitness_function(solution):
@@ -10,14 +15,14 @@ def fitness_function(solution):
     total_distance += DISTANCE_MATRIX[solution[-1]][solution[0]]
     return 1 / total_distance  # Чем больше - тем лучше
 
+
 def calculate_route_distance(solution) -> int:
     """Вычисление длины маршрута."""
     total_distance = 0
     for i in range(len(solution) - 1):
         total_distance += DISTANCE_MATRIX[solution[i]][solution[i + 1]]
     total_distance += DISTANCE_MATRIX[solution[-1]][solution[0]]
-    return total_distance # type: ignore
-
+    return total_distance  # type: ignore
 
 
 # Параметры алгоритма
@@ -33,51 +38,20 @@ patience = 100
 assert len(DISTANCE_MATRIX) > 0, "Матрица пустая"
 assert all(len(row) == len(DISTANCE_MATRIX) for row in DISTANCE_MATRIX), "Матрица не квадратная"
 
+
 history_results = []
 
 for _ in range(1):
     # Инициализация и запуск
-    abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience)
-
-    #abc.employed_bee_phase()
-    # Результаты
-    # print("Employed Bee Phase -----------")
-    # print("Лучший маршрут:", abc.best_solution)
-    # print("Длина маршрута:", calculate_route_distance(abc.best_solution))
-    # print("Фитнес:", abc.best_fitness)
-
-    #Информация по пчелам (с trial)
-    #print("\nДетали по рабочим пчелам:")
-    # for i, bee in enumerate(abc.employed_bees):
-    #     print(f"Пчела {i}: Маршрут {bee.solution}, "
-    #           f"Длина {calculate_route_distance(bee.solution)}, "
-    #           f"Фитнес {bee.fitness}, "
-    #           f"Неудач {bee.trial}")
-
-    #abc.onlooker_bee_phase()
-    # Результаты
-    # print("\nOnLooker Bee Phase -----------")
-    # print("Лучший маршрут:", abc.best_solution)
-    # print("Длина маршрута:", calculate_route_distance(abc.best_solution))
-    # print("Фитнес:", abc.best_fitness)
-
-
-    # Информация по пчелам (с trial)
-    #print("\nДетали по пчелам наблюдателями:")
-    # for i, bee in enumerate(abc.onlooker_bees):
-    #     print(f"Пчела {i}: Маршрут {bee.solution}, "
-    #           f"Длина {calculate_route_distance(bee.solution)}, "
-    #           f"Фитнес {bee.fitness}, "
-    #           f"Неудач {bee.trial}")
-
-    #abc.visualisation()
-
+    abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience, OPTIMAL_VALUE)
 
     best_solution, best_fitness = abc.run_algorithm(max_iterations)
     print("\nРезультаты:")
     print("Лучший маршрут:", best_solution)
     print("Длина маршрута:", calculate_route_distance(best_solution))
     print("Фитнес:", best_fitness)
+    if OPTIMAL_VALUE is not None:
+        print("Оптимальное значение из TSPLIB:", OPTIMAL_VALUE)
 
     history_results.append(calculate_route_distance(best_solution))
 
