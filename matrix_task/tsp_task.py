@@ -24,7 +24,7 @@ def load_tsplib_instance(filename):
             distance_matrix[i][j] = problem._wfunc(i + 1, j + 1)  # type: ignore
 
     if optimal is None:
-        optimal = 675
+        optimal = 6110
     return distance_matrix, optimal
 
 

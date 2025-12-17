@@ -101,9 +101,20 @@ class OnlookerBee(Bee):
 
     # --- ОСТАЛЬНЫЕ МЕТОДЫ ОСТАЮТСЯ ТЕМИ ЖЕ, НО БЕЗ self.fitness_function ---
     def _generate_new_solution(self, base_solution):
-        """Генерирует модифицированное решение на основе базового"""
+        """Генерирует модифицированное решение на основе базового.
+
+        Использует несколько типов мутаций:
+        - inversion, swap, shift (как было)
+        - two_opt — локальное улучшение
+        - double_bridge — сильная перестройка при больших trial.
+        """
         new_solution = base_solution.copy()
-        mutation_type = random.choice(["inversion", "swap", "shift"])
+
+        # Если наблюдатель давно не улучшался — пробуем сильную мутацию
+        if self.trial > 20:
+            return self._double_bridge_move(new_solution)
+
+        mutation_type = random.choice(["inversion", "swap", "shift", "two_opt"])
 
         if mutation_type == "inversion":
             i, j = sorted(random.sample(range(len(new_solution)), 2))
@@ -111,11 +122,37 @@ class OnlookerBee(Bee):
         elif mutation_type == "swap":
             i, j = random.sample(range(len(new_solution)), 2)
             new_solution[i], new_solution[j] = new_solution[j], new_solution[i]
-        else:
+        elif mutation_type == "shift":
             city = new_solution.pop(random.randint(0, len(new_solution) - 1))
             new_solution.insert(random.randint(0, len(new_solution)), city)
+        else:  # two_opt
+            new_solution = self._two_opt_move(new_solution)
 
         return new_solution
+
+    def _two_opt_move(self, solution):
+        """Один шаг 2-opt для маршрута."""
+        size = len(solution)
+        i, j = sorted(random.sample(range(size), 2))
+        new_solution = solution.copy()
+        new_solution[i:j + 1] = reversed(new_solution[i:j + 1])
+        return new_solution
+
+    def _double_bridge_move(self, solution):
+        """Double-bridge мутация — агрессивная перестройка тура."""
+        n = len(solution)
+        if n < 8:
+            return self._two_opt_move(solution)
+
+        new_solution = solution.copy()
+        a, b, c, d = sorted(random.sample(range(1, n - 1), 4))
+        p1 = new_solution[:a]
+        p2 = new_solution[a:b]
+        p3 = new_solution[b:c]
+        p4 = new_solution[c:d]
+        p5 = new_solution[d:]
+
+        return p1 + p3 + p2 + p4 + p5
 
     def _greedy_selection(self, new_solution):
         """Применяет жадный выбор с обновлением состояния, используя self.fitness_function."""

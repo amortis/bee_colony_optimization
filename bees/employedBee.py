@@ -29,13 +29,25 @@ class EmployedBee(Bee):
 
     def generate_new_solution(self, partner_solution):
         """
-        Генерирует новое решение на основе текущего и партнерского решения.
-        1. Выбор случайного сегмента из текущего решения
-        2. Заполнение остального из партнерского решения
-
-        :param partner_solution: Решение другой пчелы, используемое для генерации нового решения.
-        :return: Новое решение.
+        Генерирует новое решение на основе текущего и партнёрского решения.
+        Включает несколько типов операторов:
+        - OX-кроссовер (как было раньше)
+        - локальный 2-opt
+        - более сильная перестройка (double-bridge), когда пчела долго не улучшалась.
         """
+        # Если пчела давно не улучшалась — применяем более сильную мутацию
+        if self.trial > 20:
+            return self._double_bridge_move(self.solution)
+
+        mutation_type = random.choice(["ox_crossover", "two_opt"])
+
+        if mutation_type == "two_opt":
+            return self._two_opt_move(self.solution)
+        else:
+            return self._ox_crossover(partner_solution)
+
+    def _ox_crossover(self, partner_solution):
+        """OX-кроссовер (Order Crossover) между текущим и партнёрским решениями."""
         size = len(self.solution)
         new_solution = [-1] * size
 
@@ -46,16 +58,49 @@ class EmployedBee(Bee):
         # Копируем сегмент из текущего решения
         new_solution[start:end] = self.solution[start:end]
 
-        # Заполняем остальное из партнерского решения (порядок сохранен)
+        # Используем множество для быстрого поиска уже использованных городов
+        used = set(self.solution[start:end])
+
+        # Заполняем остальное из партнёрского решения (порядок сохранен)
         ptr = 0
         for i in range(size):
             if new_solution[i] == -1:
-                used = set(self.solution[start:end])  # Создаём множество для O(1) поиска
-                while partner_solution[ptr] in new_solution:
+                while partner_solution[ptr] in used:
                     ptr += 1
                 new_solution[i] = partner_solution[ptr]
+                used.add(partner_solution[ptr])
 
         return new_solution
+
+    def _two_opt_move(self, solution):
+        """Один шаг 2-opt: разворот случайного подотрезка."""
+        size = len(solution)
+        i, j = sorted(random.sample(range(size), 2))
+        new_solution = solution.copy()
+        new_solution[i:j + 1] = reversed(new_solution[i:j + 1])
+        return new_solution
+
+    def _double_bridge_move(self, solution):
+        """
+        Double-bridge мутация — сильная перестройка маршрута.
+        Хорошо подходит для выхода из локальных минимумов.
+        """
+        n = len(solution)
+        if n < 8:
+            # Для маленьких туров достаточно 2-opt
+            return self._two_opt_move(solution)
+
+        new_solution = solution.copy()
+        # Выбираем 4 точки разреза
+        a, b, c, d = sorted(random.sample(range(1, n - 1), 4))
+        p1 = new_solution[:a]
+        p2 = new_solution[a:b]
+        p3 = new_solution[b:c]
+        p4 = new_solution[c:d]
+        p5 = new_solution[d:]
+
+        # Переставляем блоки: p1 + p3 + p2 + p4 + p5
+        return p1 + p3 + p2 + p4 + p5
 
     # --- НОВАЯ АСИНХРОННАЯ ВЕРСИЯ ---
     def explore_async(self, other_solutions, fitness_function): # type: ignore

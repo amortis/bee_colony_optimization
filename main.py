@@ -4,7 +4,7 @@ from matrix_task.tsp_task import load_tsplib_instance
 
 # Загружаем матрицу расстояний из TSPLIB-задачи
 # При желании можно заменить файл на другой, например: "matrix_task/eil51.tsp"
-DISTANCE_MATRIX, OPTIMAL_VALUE = load_tsplib_instance("matrix_task/st70.tsp")
+DISTANCE_MATRIX, OPTIMAL_VALUE = load_tsplib_instance("matrix_task/ch130.tsp")
 print(OPTIMAL_VALUE)
 
 # Фитнес-функция
@@ -28,11 +28,11 @@ def calculate_route_distance(solution) -> int:
 # Параметры алгоритма
 lb = 0  # Нумерация городов с 0
 ub = len(DISTANCE_MATRIX) - 1
-num_employed_bees = 130
-num_onlooker_bees = 400
-limit = 100  # Максимальное количество неудач для одной пчелы
+num_employed_bees = 200
+num_onlooker_bees = 350
+limit = 150  # Максимальное количество неудач для одной пчелы
 max_iterations = 3500
-patience = 100
+patience = 300
 
 # проверки матрицы
 assert len(DISTANCE_MATRIX) > 0, "Матрица пустая"
@@ -43,7 +43,7 @@ history_results = []
 
 for _ in range(1):
     # Инициализация и запуск
-    abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience, OPTIMAL_VALUE)
+    abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience, OPTIMAL_VALUE, distance_matrix=DISTANCE_MATRIX)
 
     best_solution, best_fitness = abc.run_algorithm(max_iterations)
     print("\nРезультаты:")
