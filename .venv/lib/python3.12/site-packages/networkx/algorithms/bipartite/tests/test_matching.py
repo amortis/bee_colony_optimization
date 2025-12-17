@@ -1,4 +1,5 @@
 """Unit tests for the :mod:`networkx.algorithms.bipartite.matching` module."""
+
 import itertools
 
 import pytest
@@ -104,7 +105,7 @@ class TestMatching:
         # the number of vertices in a minimum vertex cover.
         assert len(vertices) == 5
         # Assert that the set is truly a vertex cover.
-        for (u, v) in self.graph.edges():
+        for u, v in self.graph.edges():
             assert u in vertices or v in vertices
         # TODO Assert that the vertices are the correct ones.
 

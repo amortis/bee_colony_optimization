@@ -1,0 +1,93 @@
+Как это исправить - сделать "безопасные" операторы:
+
+Вот модифицированные версии классов пчел, которые гарантируют, что все генерируемые решения будут допустимыми:
+
+давай пока это оставим как проблему на будущее пока забьем
+
+теперь следующий вопрос
+вот давай оставим текущую реализацию abc_sparse
+но сделаем следующее
+давай сделаем его паралельную версию
+при работе использовать multiprocessing и Manager
+
+(.venv) egor@PC:~/Coding/PycharmProjects/bee_colony_optimization$ /home/egor/Coding/PycharmProjects/bee_colony_optimization/.venv/bin/python /home/egor/Coding/PycharmProjects/bee_colony_optimization/main_sparse.py
+Загрузка TSP задачи...
+Создание неполного графа...
+Городов: 400
+Гарантированный цикл: [249, 94, 158, 164, 246, 228, 190, 122, 257, 292]...
+Гарантированный цикл корректен, длина: 207544.00
+
+=== Запуск 1 ===
+Используем гарантированный цикл длины: 207544.00
+Iteration 0. Time: 0:00:00. Best distance = 205010.00
+Iteration 20. Time: 0:00:12. Best distance = 201545.00
+Iteration 40. Time: 0:00:32. Best distance = 199211.00
+Iteration 60. Time: 0:01:01. Best distance = 195320.00
+Iteration 80. Time: 0:01:39. Best distance = 192701.00
+Iteration 100. Time: 0:02:26. Best distance = 189422.00
+Iteration 120. Time: 0:03:22. Best distance = 186965.00
+Iteration 140. Time: 0:04:24. Best distance = 184062.00
+Iteration 160. Time: 0:05:26. Best distance = 181986.00
+Iteration 180. Time: 0:06:28. Best distance = 179835.00
+Iteration 200. Time: 0:07:30. Best distance = 177721.00
+Iteration 220. Time: 0:08:33. Best distance = 175210.00
+Iteration 240. Time: 0:09:35. Best distance = 172431.00
+Iteration 260. Time: 0:10:37. Best distance = 169743.00
+Iteration 280. Time: 0:11:39. Best distance = 167610.00
+Iteration 300. Time: 0:12:42. Best distance = 164854.00
+Iteration 320. Time: 0:13:44. Best distance = 162958.00
+Iteration 340. Time: 0:14:46. Best distance = 161652.00
+Iteration 360. Time: 0:15:48. Best distance = 159423.00
+Iteration 380. Time: 0:16:51. Best distance = 157518.00
+Iteration 400. Time: 0:17:53. Best distance = 156012.00
+Iteration 420. Time: 0:18:55. Best distance = 154025.00
+Iteration 440. Time: 0:19:57. Best distance = 152217.00
+Iteration 460. Time: 0:20:59. Best distance = 150499.00
+Iteration 480. Time: 0:22:01. Best distance = 148455.00
+Iteration 500. Time: 0:23:03. Best distance = 147307.00
+Iteration 520. Time: 0:24:05. Best distance = 146120.00
+Iteration 540. Time: 0:25:07. Best distance = 143228.00
+Iteration 560. Time: 0:26:09. Best distance = 141916.00
+Iteration 580. Time: 0:27:11. Best distance = 140494.00
+Iteration 600. Time: 0:28:12. Best distance = 138976.00
+Iteration 620. Time: 0:29:14. Best distance = 137371.00
+Iteration 640. Time: 0:30:16. Best distance = 134817.00
+Iteration 660. Time: 0:31:18. Best distance = 133391.00
+Iteration 680. Time: 0:32:20. Best distance = 130054.00
+Iteration 700. Time: 0:33:21. Best distance = 128954.00
+Iteration 720. Time: 0:34:23. Best distance = 126502.00
+Iteration 740. Time: 0:35:25. Best distance = 125081.00
+Iteration 760. Time: 0:36:27. Best distance = 124147.00
+Iteration 780. Time: 0:37:29. Best distance = 123208.00
+Iteration 800. Time: 0:38:31. Best distance = 121230.00
+Iteration 820. Time: 0:39:32. Best distance = 119994.00
+Iteration 840. Time: 0:40:34. Best distance = 118596.00
+Iteration 860. Time: 0:41:37. Best distance = 117205.00
+Iteration 880. Time: 0:42:39. Best distance = 115560.00
+Iteration 900. Time: 0:43:41. Best distance = 114812.00
+Iteration 920. Time: 0:44:44. Best distance = 113842.00
+Iteration 940. Time: 0:45:46. Best distance = 112380.00
+Iteration 960. Time: 0:46:48. Best distance = 111640.00
+Iteration 980. Time: 0:47:52. Best distance = 110578.00
+Iteration 1000. Time: 0:48:55. Best distance = 110036.00
+Iteration 1020. Time: 0:49:59. Best distance = 108538.00
+Iteration 1040. Time: 0:51:02. Best distance = 107284.00
+Iteration 1060. Time: 0:52:06. Best distance = 106057.00
+Iteration 1080. Time: 0:53:09. Best distance = 105045.00
+Iteration 1100. Time: 0:54:11. Best distance = 103936.00
+^CTraceback (most recent call last):
+  File "/home/egor/Coding/PycharmProjects/bee_colony_optimization/main_sparse.py", line 99, in <module>
+    best_solution, best_fitness = abc.run_algorithm(
+                                  ^^^^^^^^^^^^^^^^^^
+  File "/home/egor/Coding/PycharmProjects/bee_colony_optimization/ABC_sparse.py", line 86, in run_algorithm
+    self.onlooker_bee_phase()
+  File "/home/egor/Coding/PycharmProjects/bee_colony_optimization/ABC_sparse.py", line 261, in onlooker_bee_phase
+    results = [future.result() for future in futures]
+               ^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/concurrent/futures/_base.py", line 451, in result
+    self._condition.wait(timeout)
+  File "/usr/lib/python3.12/threading.py", line 355, in wait
+    waiter.acquire()
+KeyboardInterrupt
+
+(.venv) egor@PC:~/Coding/PycharmProjects/bee_colony_optimization$ 
