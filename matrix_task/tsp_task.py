@@ -21,5 +21,3 @@ def load_tsplib_instance(filename):
 # Использование:
 matrix, optimal = load_tsplib_instance("matrix_task/st70.tsp")
 optimal = 675
-print(f"Оптимальное решение из TSPLIB: {optimal}")
-print(matrix)
