@@ -15,12 +15,12 @@ def main():
         # Создаём гибридный ABC+ILS
         abc_ils = ABCTSPILS(
             distance_matrix=distance_matrix,
-            num_employed_bees=120,
-            num_onlooker_bees=250,
+            num_employed_bees=25,
+            num_onlooker_bees=50,
             limit=100,
             patience=300,
             local_search_interval=50,
-            heuristic_init_ratio=0.3,
+            heuristic_init_ratio=0.8,
             use_parallel=True,
             num_workers=16
         )

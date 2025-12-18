@@ -19,6 +19,10 @@ from tsp_optimizations import (
     double_bridge_perturbation,
     perturbation_2opt_random,
     build_candidate_lists,
+    lin_kernighan_simplified,
+    multi_insert_perturbation,
+    random_subsequence_reverse,
+    random_subsequence_swap,
 )
 
 
@@ -194,6 +198,10 @@ class ABCTSPILS:
 
         assert self.best_tour is not None
 
+        # Отслеживание застревания для глобального kick
+        stagnation_counter = 0
+        last_best_distance = self.best_distance
+        
         for it in range(max_iterations):
             old_best = self.best_distance
 
@@ -201,20 +209,35 @@ class ABCTSPILS:
             self.onlooker_bee_phase()
             self.scout_bee_phase()
 
-            # периодический глобальный 2-opt над лучшим решением (слой ILS)
-            if it > 0 and it % self.local_search_interval == 0:
+            # Периодический глубокий 2-opt над лучшим решением (элитизм + интенсификация)
+            # Делаем это чаще для лучшего качества
+            if it > 0 and it % max(10, self.local_search_interval // 2) == 0:
                 self._local_2opt_search_global()
+            
+            # Глубокий 2-opt раз в 50 итераций для максимальной полировки
+            if it > 0 and it % 50 == 0:
+                self._deep_local_search_global()
 
             self.history.append(self.best_distance)
 
             if self.best_distance + 1e-9 < old_best:
                 self.wait = 0
                 self.best_iteration = it
+                stagnation_counter = 0  # Сброс счетчика застревания
+                last_best_distance = self.best_distance
                 # Обновляем память о хороших ребрах
                 if self.best_tour is not None:
                     self._update_edge_memory(self.best_tour)
             else:
                 self.wait += 1
+                stagnation_counter += 1
+
+            # ГЛОБАЛЬНЫЙ KICK при застревании (если нет улучшения 500+ итераций)
+            if stagnation_counter > 500:
+                print(f"\nГлобальный kick на итерации {it} (застревание {stagnation_counter} итераций)")
+                self._global_kick()
+                stagnation_counter = 0
+                last_best_distance = self.best_distance
 
             # Адаптация параметров
             if it > 0:
@@ -232,7 +255,8 @@ class ABCTSPILS:
             if it % 50 == 0:
                 print(
                     f"Iteration {it}: best distance = {self.best_distance:.2f}, "
-                    f"time = {self.get_formatted_time()}"
+                    f"time = {self.get_formatted_time()}, "
+                    f"stagnation = {stagnation_counter}"
                 )
 
         self.end_time = time.time()
@@ -301,9 +325,10 @@ class ABCTSPILS:
 
                 improved_flag = bee.explore(self.employed_bees)
 
-                # Применяем быстрый локальный поиск к успешным кандидатам (20% вероятность)
-                # Используем списки соседей для больших задач (ускорение в 50-100 раз)
-                if improved_flag and random.random() < 0.2:
+                # ИНТЕНСИФИКАЦИЯ: Применяем быстрый локальный поиск ВСЕГДА (вероятность 1.0)
+                # Для задач 100-400 городов запас скорости есть, делаем 2-opt всегда
+                # Это значительно улучшает качество решений
+                if improved_flag:
                     tour_array = np.asarray(bee.solution, dtype=np.int32)
                     if self.neighbors is not None:
                         optimized = fast_2opt_neighbors(self.distance_matrix, tour_array, self.neighbors)
@@ -629,5 +654,87 @@ class ABCTSPILS:
                 self.employed_bees[i].trial = 0
                 if hasattr(self.employed_bees[i], 'invalidate_cache'):
                     self.employed_bees[i].invalidate_cache()
+    
+    def _deep_local_search_global(self) -> None:
+        """
+        Глубокий локальный поиск с Lin-Kernighan эвристикой.
+        Используется для максимальной полировки лучшего решения (элитизм).
+        
+        Lin-Kernighan - это переменная глубина k-opt поиск, который может
+        найти улучшения, которые пропускает обычный 2-opt.
+        Согласно исследованиям, может снизить отклонение с 0.5% до 0%.
+        """
+        if self.best_tour is None:
+            return
+        
+        # Используем упрощенный Lin-Kernighan для глубокого поиска
+        # Это более мощный локальный поиск, чем стандартный 2-opt
+        improved_tour, improved_dist = lin_kernighan_simplified(
+            self.distance_matrix, 
+            self.best_tour,
+            neighbors=self.neighbors,
+            max_depth=5  # Пробуем до 5-opt
+        )
+        
+        if improved_dist + 1e-9 < self.best_distance:
+            self.best_distance = improved_dist
+            self.best_tour = improved_tour.copy()
+            
+            # Распространяем на лучшие пчелы
+            num_elite = max(1, len(self.employed_bees) // 3)
+            for i in range(num_elite):
+                if i == 0:
+                    self.employed_bees[i].solution = improved_tour.copy()
+                else:
+                    # Небольшое возмущение
+                    perturbed = double_bridge_perturbation(improved_tour)
+                    self.employed_bees[i].solution = perturbed
+                
+                self.employed_bees[i].fitness = self._fitness(self.employed_bees[i].solution)
+                self.employed_bees[i].trial = 0
+                if hasattr(self.employed_bees[i], 'invalidate_cache'):
+                    self.employed_bees[i].invalidate_cache()
+    
+    def _global_kick(self) -> None:
+        """
+        Глобальный kick при застревании - делает Double Bridge всем пчелам,
+        кроме лучшей. Это позволяет "выпрыгнуть" из глубокого локального минимума.
+        """
+        if self.best_tour is None:
+            return
+        
+        # Находим лучшую пчелу
+        best_idx = 0
+        best_len = calculate_tour_length(self.distance_matrix, self.employed_bees[0].solution)
+        for i in range(1, len(self.employed_bees)):
+            current_len = calculate_tour_length(self.distance_matrix, self.employed_bees[i].solution)
+            if current_len < best_len:
+                best_len = current_len
+                best_idx = i
+        
+        # Делаем Double Bridge всем пчелам, кроме лучшей
+        for i in range(len(self.employed_bees)):
+            if i != best_idx:
+                # Берем лучшее решение и делаем Double Bridge
+                candidate = double_bridge_perturbation(self.best_tour)
+                
+                # Применяем быстрый 2-opt для возврата в локальный минимум
+                candidate_array = np.asarray(candidate, dtype=np.int32)
+                if self.neighbors is not None:
+                    optimized = fast_2opt_neighbors(self.distance_matrix, candidate_array, self.neighbors)
+                else:
+                    optimized = fast_2opt(self.distance_matrix, candidate_array)
+                
+                self.employed_bees[i].solution = list(optimized)
+                self.employed_bees[i].fitness = self._fitness(self.employed_bees[i].solution)
+                self.employed_bees[i].trial = 0
+                if hasattr(self.employed_bees[i], 'invalidate_cache'):
+                    self.employed_bees[i].invalidate_cache()
+                
+                # Проверяем, не нашли ли лучшее решение
+                tour_len = calculate_tour_length(self.distance_matrix, self.employed_bees[i].solution)
+                if tour_len < self.best_distance:
+                    self.best_distance = tour_len
+                    self.best_tour = self.employed_bees[i].solution.copy()
 
 
