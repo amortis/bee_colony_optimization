@@ -20,7 +20,7 @@ def main():
             limit=100,
             patience=300,
             local_search_interval=50,
-            heuristic_init_ratio=0.9,
+            heuristic_init_ratio=0.3,
             use_parallel=True,
             num_workers=16
         )

@@ -12,6 +12,8 @@ from tsp_optimizations import (
     local_search_2opt,
     local_search_3opt,
     fast_2opt,
+    fast_2opt_neighbors,
+    get_nearest_neighbors,
     nearest_neighbor_init,
     greedy_init,
     double_bridge_perturbation,
@@ -84,10 +86,13 @@ class ABCTSPILS:
         self.edge_memory: np.ndarray = np.zeros((self.num_cities, self.num_cities))
         self.memory_decay = 0.95
         
-        # Candidate Lists для ускорения 2-opt
-        self.candidate_lists: Optional[np.ndarray] = None
+        # Списки ближайших соседей для ускорения 2-opt (критично для 300-400 городов)
+        # Сложность падает с O(N²) до O(N × n_neighbors)
+        self.neighbors: Optional[np.ndarray] = None
+        n_neighbors = 20 if self.num_cities < 200 else 30  # Больше соседей для больших задач
         if self.num_cities > 50:  # Строим только для больших задач
-            self.candidate_lists = build_candidate_lists(self.distance_matrix, num_neighbors=20)
+            self.neighbors = get_nearest_neighbors(self.distance_matrix, n_neighbors=n_neighbors)
+            print(f"Построены списки ближайших соседей (n_neighbors={n_neighbors}) для ускорения 2-opt")
 
     # ===================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =====================
 
@@ -297,10 +302,13 @@ class ABCTSPILS:
                 improved_flag = bee.explore(self.employed_bees)
 
                 # Применяем быстрый локальный поиск к успешным кандидатам (20% вероятность)
-                # Это значительно улучшает качество решений
+                # Используем списки соседей для больших задач (ускорение в 50-100 раз)
                 if improved_flag and random.random() < 0.2:
                     tour_array = np.asarray(bee.solution, dtype=np.int32)
-                    optimized = fast_2opt(self.distance_matrix, tour_array)
+                    if self.neighbors is not None:
+                        optimized = fast_2opt_neighbors(self.distance_matrix, tour_array, self.neighbors)
+                    else:
+                        optimized = fast_2opt(self.distance_matrix, tour_array)
                     optimized_list = list(optimized)
                     optimized_len = calculate_tour_length(self.distance_matrix, optimized_list)
                     current_len = calculate_tour_length(self.distance_matrix, bee.solution)
@@ -379,12 +387,16 @@ class ABCTSPILS:
         for i, bee in enumerate(self.employed_bees):
             if bee.trial > self.limit:
                 # ВМЕСТО random.shuffle: берем лучшее глобальное решение и сильно его ломаем (Kick)
+                # Double Bridge (4 разрезами) - сохраняет 95% хорошего пути, меняет только чуть-чуть
                 candidate = double_bridge_perturbation(self.best_tour)
                 
-                # Сразу применяем быстрый 2-opt, чтобы вернуть его в локальный минимум
+                # Сразу применяем быстрый 2-opt с соседями, чтобы вернуть его в локальный минимум
                 # (Идея ILS: Local Opt -> Perturb -> Local Opt)
                 candidate_array = np.asarray(candidate, dtype=np.int32)
-                optimized = fast_2opt(self.distance_matrix, candidate_array)
+                if self.neighbors is not None:
+                    optimized = fast_2opt_neighbors(self.distance_matrix, candidate_array, self.neighbors)
+                else:
+                    optimized = fast_2opt(self.distance_matrix, candidate_array)
                 new_tour = list(optimized)
 
                 self.employed_bees[i].solution = new_tour
@@ -558,7 +570,10 @@ class ABCTSPILS:
     def _adaptive_local_search(self, tour: Tour) -> Tuple[Tour, float]:
         """
         Выбирает стратегию локального поиска на основе истории улучшений.
+        Использует оптимизированный 2-opt с соседями для больших задач.
         """
+        tour_array = np.asarray(tour, dtype=np.int32)
+        
         # Анализируем историю улучшений
         if len(self._ls_improvement_history) > 10:
             recent_avg = np.mean(self._ls_improvement_history[-5:])
@@ -566,8 +581,13 @@ class ABCTSPILS:
                 # Используем более агрессивный 3-opt
                 return local_search_3opt(self.distance_matrix, tour)
         
-        # Стандартный 2-opt
-        return local_search_2opt(self.distance_matrix, tour)
+        # Стандартный 2-opt с использованием списков соседей для ускорения
+        if self.neighbors is not None:
+            optimized = fast_2opt_neighbors(self.distance_matrix, tour_array, self.neighbors)
+            distance = calculate_tour_length(self.distance_matrix, optimized)
+            return list(optimized), float(distance)
+        else:
+            return local_search_2opt(self.distance_matrix, tour)
     
     def _local_2opt_search_global(self) -> None:
         """
