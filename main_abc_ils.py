@@ -5,22 +5,24 @@ from matrix_task.tsp_task import load_tsplib_instance
 def main():
     # Загружаем задачу TSP из TSPLIB-файла
     # Можно менять путь на eil51.tsp, st70.tsp и т.д.
-    distance_matrix, optimal = load_tsplib_instance("matrix_task/st70.tsp")
+    distance_matrix, optimal = load_tsplib_instance("matrix_task/rd100.tsp")
 
     print("TSPLIB instance loaded.")
     if optimal is not None:
         print(f"Known optimal value from TSPLIB (or overridden): {optimal}")
     global_history = []
-    for _ in range(5):
+    for _ in range(1):
         # Создаём гибридный ABC+ILS
         abc_ils = ABCTSPILS(
             distance_matrix=distance_matrix,
-            num_employed_bees=80,
-            num_onlooker_bees=140,
+            num_employed_bees=120,
+            num_onlooker_bees=250,
             limit=100,
             patience=300,
             local_search_interval=50,
-            heuristic_init_ratio=0.8,
+            heuristic_init_ratio=0.9,
+            use_parallel=True,
+            num_workers=16
         )
 
         best_tour, best_distance = abc_ils.run(max_iterations=2000)

@@ -6,6 +6,7 @@ fonttools==4.61.1
 kiwisolver==1.4.9
 matplotlib==3.10.8
 networkx==2.8.8
+numba>=0.60.0
 numpy==2.3.5
 packaging==25.0
 pandas==2.3.3

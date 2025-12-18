@@ -1,11 +1,26 @@
 from bees.bee import Bee
 import random
+from typing import Optional
+import numpy as np
 
 
 class EmployedBee(Bee):
     """
         Класс, представляющий рабочую пчелу. Рабочие пчелы отвечают за улучшение текущих решений.
     """
+    
+    def __init__(self, solution, fitness_function, initial_fitness=None, distance_matrix: Optional[np.ndarray] = None):
+        """
+        Инициализация рабочей пчелы с поддержкой кэширования длины тура.
+        
+        :param solution: Текущее решение пчелы
+        :param fitness_function: Функция оценки качества решения
+        :param initial_fitness: Начальное значение фитнеса (опционально)
+        :param distance_matrix: Матрица расстояний для кэширования длины тура (опционально)
+        """
+        super().__init__(solution, fitness_function, initial_fitness)
+        self.distance_matrix = distance_matrix
+        self._cached_length: Optional[float] = None
     def explore(self, other_solutions): # type: ignore
         """
         Рабочая пчела исследует окрестность текущего решения, пытаясь найти лучшее.
@@ -22,6 +37,7 @@ class EmployedBee(Bee):
             self.solution = new_solution
             self.fitness = new_fitness
             self.trial = 0
+            self.invalidate_cache()  # Инвалидируем кэш при изменении решения
             return True
         else:
             self.trial += 1
@@ -56,6 +72,33 @@ class EmployedBee(Bee):
                 new_solution[i] = partner_solution[ptr]
 
         return new_solution
+    
+    def get_tour_length(self, distance_matrix: np.ndarray) -> float:
+        """
+        Вычисляет длину тура с кэшированием.
+        
+        :param distance_matrix: Матрица расстояний
+        :return: Длина тура
+        """
+        if self._cached_length is None or self.distance_matrix is not distance_matrix:
+            from tsp_optimizations import calculate_tour_length
+            self._cached_length = calculate_tour_length(distance_matrix, self.solution)
+            self.distance_matrix = distance_matrix
+        return self._cached_length
+    
+    def invalidate_cache(self):
+        """Инвалидирует кэш длины тура (вызывать при изменении решения)"""
+        self._cached_length = None
+    
+    def update_solution(self, new_solution):
+        """
+        Обновляет текущее решение пчелы, если новое решение лучше.
+        Также инвалидирует кэш.
+        """
+        result = super().update_solution(new_solution)
+        if result:
+            self.invalidate_cache()
+        return result
 
     # --- НОВАЯ АСИНХРОННАЯ ВЕРСИЯ ---
     def explore_async(self, other_solutions, fitness_function): # type: ignore
