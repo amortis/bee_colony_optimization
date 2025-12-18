@@ -1,6 +1,30 @@
 from bees.bee import Bee
 import random
 
+# Импортируем оптимизированные функции для TSP
+try:
+    from tsp_optimizations import local_search_2opt, two_opt_swap, calculate_distance
+    TSP_OPTIMIZATIONS_AVAILABLE = True
+except ImportError:
+    TSP_OPTIMIZATIONS_AVAILABLE = False
+
+# --- ТОП-УРОВНЕВАЯ ФУНКЦИЯ ДЛЯ ВЫЧИСЛЕНИЯ ФИТНЕСА (для асинхронных операций) ---
+def compute_fitness_from_distance_matrix(solution, distance_matrix):
+    """ Вычисляет фитнес (1/расстояние) на основе матрицы расстояний. """
+    if distance_matrix is None:
+        return 0.0
+    if TSP_OPTIMIZATIONS_AVAILABLE:
+        return 1.0 / calculate_distance(solution, distance_matrix)
+    else:
+        # Fallback если модуль не доступен
+        total_distance = 0
+        n = len(solution)
+        for i in range(n):
+            city1 = solution[i]
+            city2 = solution[(i + 1) % n]
+            total_distance += distance_matrix[city1, city2]
+        return 1.0 / total_distance if total_distance > 0 else 0.0
+
 
 class EmployedBee(Bee):
     """
@@ -29,22 +53,24 @@ class EmployedBee(Bee):
 
     def generate_new_solution(self, partner_solution):
         """
-        Генерирует новое решение на основе текущего и партнёрского решения.
-        Включает несколько типов операторов:
-        - OX-кроссовер (как было раньше)
-        - локальный 2-opt
-        - более сильная перестройка (double-bridge), когда пчела долго не улучшалась.
+        Генерирует новое решение, применяя кроссовер и затем 2-opt.
         """
-        # Если пчела давно не улучшалась — применяем более сильную мутацию
+        current_solution = self.solution.copy()
+        
         if self.trial > 20:
-            return self._double_bridge_move(self.solution)
+            mutated_solution = self._double_bridge_move(current_solution)
+            if self.distance_matrix is not None and TSP_OPTIMIZATIONS_AVAILABLE:
+                final_solution, _ = local_search_2opt(mutated_solution, self.distance_matrix)
+                return final_solution
+            return mutated_solution
 
-        mutation_type = random.choice(["ox_crossover", "two_opt"])
-
-        if mutation_type == "two_opt":
-            return self._two_opt_move(self.solution)
-        else:
-            return self._ox_crossover(partner_solution)
+        crossover_solution = self._ox_crossover(partner_solution)
+        
+        if self.distance_matrix is not None and TSP_OPTIMIZATIONS_AVAILABLE:
+            final_solution, _ = local_search_2opt(crossover_solution, self.distance_matrix)
+            return final_solution
+        
+        return crossover_solution
 
     def _ox_crossover(self, partner_solution):
         """OX-кроссовер (Order Crossover) между текущим и партнёрским решениями."""
@@ -74,11 +100,16 @@ class EmployedBee(Bee):
 
     def _two_opt_move(self, solution):
         """Один шаг 2-opt: разворот случайного подотрезка."""
-        size = len(solution)
-        i, j = sorted(random.sample(range(size), 2))
-        new_solution = solution.copy()
-        new_solution[i:j + 1] = reversed(new_solution[i:j + 1])
-        return new_solution
+        if TSP_OPTIMIZATIONS_AVAILABLE:
+            size = len(solution)
+            i, j = sorted(random.sample(range(size), 2))
+            return two_opt_swap(solution, i, j)
+        else:
+            size = len(solution)
+            i, j = sorted(random.sample(range(size), 2))
+            new_solution = solution.copy()
+            new_solution[i:j + 1] = reversed(new_solution[i:j + 1])
+            return new_solution
 
     def _double_bridge_move(self, solution):
         """
@@ -88,30 +119,47 @@ class EmployedBee(Bee):
         n = len(solution)
         if n < 8:
             # Для маленьких туров достаточно 2-opt
-            return self._two_opt_move(solution)
+            if TSP_OPTIMIZATIONS_AVAILABLE:
+                i, j = sorted(random.sample(range(n), 2))
+                return two_opt_swap(solution, i, j)
+            else:
+                return self._two_opt_move(solution)
 
-        new_solution = solution.copy()
-        # Выбираем 4 точки разреза
         a, b, c, d = sorted(random.sample(range(1, n - 1), 4))
-        p1 = new_solution[:a]
-        p2 = new_solution[a:b]
-        p3 = new_solution[b:c]
-        p4 = new_solution[c:d]
-        p5 = new_solution[d:]
-
-        # Переставляем блоки: p1 + p3 + p2 + p4 + p5
+        p1 = solution[:a]
+        p2 = solution[a:b]
+        p3 = solution[b:c]
+        p4 = solution[c:d]
+        p5 = solution[d:]
         return p1 + p3 + p2 + p4 + p5
 
-    # --- НОВАЯ АСИНХРОННАЯ ВЕРСИЯ ---
-    def explore_async(self, other_solutions, fitness_function): # type: ignore
+    # --- АСИНХРОННАЯ ВЕРСИЯ (ИЗМЕНЕНО) ---
+    def explore_async(self, other_solutions, distance_matrix):
         """
         Асинхронная версия explore, возвращает (is_improved, new_solution, new_fitness).
         """
-        partner = random.choice([bee for bee in other_solutions if bee != self])
-        new_solution = self.generate_new_solution(partner.solution)
-        new_fitness = fitness_function(new_solution) # Используем переданную функцию
+        # ВАЖНО: Мы не можем использовать self.distance_matrix, так как объект EmployedBee
+        # не сериализуется полностью при передаче в ProcessPoolExecutor.
+        # Мы должны использовать переданный distance_matrix.
+        
+        # Создаем временный объект EmployedBee для использования его методов
+        # (это не тот же объект, что в основном процессе, но он имеет те же методы)
+        temp_bee = EmployedBee(self.solution, self.fitness_function, initial_fitness=self.fitness, distance_matrix=distance_matrix)
+        
+        # Выбираем партнера (нужно передать только решения, а не объекты пчел)
+        partner_solutions = [bee.solution for bee in other_solutions if bee != self]
+        if not partner_solutions:
+            return False, self.solution, self.fitness
+            
+        partner_solution = random.choice(partner_solutions)
+        
+        # Генерируем новое решение с помощью generate_new_solution
+        new_solution = temp_bee.generate_new_solution(partner_solution)
+        
+        # Вычисляем фитнес с помощью top-level функции
+        new_fitness = compute_fitness_from_distance_matrix(new_solution, distance_matrix)
 
         if new_fitness > self.fitness:
             return True, new_solution, new_fitness
         else:
-            return False, self.solution, self.fitness # Возвращаем старые значения, если не улучшено
+            return False, self.solution, self.fitness

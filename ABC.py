@@ -1,61 +1,87 @@
 import random
 import time
 from datetime import timedelta
-
-
 import numpy as np
-
-from bees import EmployedBee, OnlookerBee
 import matplotlib.pyplot as plt
-
 import concurrent.futures
 import multiprocessing as mp
 
+# Импортируем оптимизированные функции для TSP
+try:
+    from tsp_optimizations import nearest_neighbor_init, greedy_init, local_search_2opt, two_opt_swap, calculate_distance
+    from bees.employedBee import compute_fitness_from_distance_matrix
+    TSP_OPTIMIZATIONS_AVAILABLE = True
+except ImportError:
+    TSP_OPTIMIZATIONS_AVAILABLE = False
+    def compute_fitness_from_distance_matrix(solution, distance_matrix):
+        if distance_matrix is None:
+            return 0.0
+        total_distance = 0
+        n = len(solution)
+        for i in range(n):
+            city1 = solution[i]
+            city2 = solution[(i + 1) % n]
+            total_distance += distance_matrix[city1, city2]
+        return 1.0 / total_distance if total_distance > 0 else 0.0
 
-# --- НОВАЯ ФУНКЦИЯ ДЛЯ ВЫЧИСЛЕНИЯ ФИТНЕСА В ОТДЕЛЬНОМ ПРОЦЕССЕ ---
-# Эта функция должна быть на уровне модуля, чтобы быть pickle-совместимой
+from bees import EmployedBee, OnlookerBee
+
+# --- ТОП-УРОВНЕВАЯ ФУНКЦИЯ ДЛЯ ВЫЧИСЛЕНИЯ ФИТНЕСА В ОТДЕЛЬНОМ ПРОЦЕССЕ ---
 def compute_fitness_task(args):
-    solution, fitness_func = args
-    return fitness_func(solution)
+    solution, distance_matrix = args
+    return compute_fitness_from_distance_matrix(solution, distance_matrix)
+
+# --- ТОП-УРОВНЕВАЯ ФУНКЦИЯ ДЛЯ СИНХРОННОГО ФИТНЕСА ---
+# Используем класс-обертку для передачи distance_matrix
+class FitnessWrapper:
+    def __init__(self, distance_matrix):
+        self.distance_matrix = distance_matrix
+    
+    def __call__(self, tour):
+        return compute_fitness_from_distance_matrix(tour, self.distance_matrix)
 
 class ABCAlgorithm:
-    def __init__(self, fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience, optimal_length, distance_matrix=None, visualization=False, num_workers=None, seed=42,
+    def __init__(self, fitness_function=None, lb=0, ub=0, num_employed_bees=50, num_onlooker_bees=50, limit=100, patience=100, optimal_length=0, distance_matrix=None, visualization=False, num_workers=None, seed=42,
                  local_search_interval=20, local_search_iterations=200, elitism_rate=0.1, heuristic_init_ratio=0.7):
         """
         Инициализация алгоритма.
 
-        :param fitness_function: Функция, которая оценивает качество решения.
+        :param fitness_function: Функция, которая оценивает качество решения (опционально, если есть distance_matrix).
         :param lb: Нижняя граница пространства решений.
         :param ub: Верхняя граница пространства решений.
         :param num_employed_bees: Количество рабочих пчел.
         :param num_onlooker_bees: Количество пчел-наблюдателей.
         :param limit: Максимальное количество неудачных попыток улучшения решения.
+        :param distance_matrix: Матрица расстояний для TSP (если указана, используется вместо fitness_function).
         """
         # проверки
         assert ub > lb, "Верхняя граница должна быть больше нижней"
         assert num_employed_bees > 0, "Должна быть хотя бы одна рабочая пчела"
         assert num_onlooker_bees > 0, "Должна быть хотя бы одна пчела-наблюдатель"
         assert limit > 0, "Лимит неудач должен быть положительным"
-        # Сиды
-        # Фиксируем случайность
-        # random.seed(seed)
-        # np.random.seed(seed)
-        # self.seed = seed
 
         # --- НОВОЕ ---
         self.num_workers = num_workers or min(32, mp.cpu_count()) # По умолчанию используем количество ядер
         self.executor = concurrent.futures.ProcessPoolExecutor(max_workers=self.num_workers)
         # --- КОНЕЦ НОВОГО ---
 
-
-        self.fitness_function = fitness_function
+        # Преобразуем в numpy array для эффективности (из ILS)
+        self.distance_matrix = np.asarray(distance_matrix, dtype=np.float64) if distance_matrix is not None else None
+        
+        # ИЗМЕНЕНО: Используем класс-обертку вместо lambda
+        if self.distance_matrix is not None:
+            self.fitness_function = FitnessWrapper(self.distance_matrix)
+        elif fitness_function is not None:
+            self.fitness_function = fitness_function
+        else:
+            raise ValueError("Необходимо указать либо distance_matrix, либо fitness_function")
+        
         self.lb = lb
         self.ub = ub
         self.num_employed_bees = num_employed_bees
         self.num_onlooker_bees = num_onlooker_bees
         self.limit = limit
         self.optimal_length = optimal_length
-        self.distance_matrix = distance_matrix
         self.visualization = visualization
         # Параметры локального поиска и элитизма
         self.local_search_interval = local_search_interval
@@ -83,6 +109,47 @@ class ABCAlgorithm:
         self.start_time = None
         self.end_time = None
 
+    # --- ОПТИМИЗИРОВАННОЕ ВЫЧИСЛЕНИЕ РАССТОЯНИЯ (из ILS) ---
+    def _calculate_distance(self, tour):
+        """
+        Вычисляет общую длину маршрута (оптимизированная версия из ILS).
+        Использует numpy для быстрого доступа к матрице расстояний.
+        """
+        if self.distance_matrix is None:
+            return 0
+        
+        distance = 0
+        n = len(tour)
+        for i in range(n):
+            city1 = tour[i]
+            city2 = tour[(i + 1) % n]
+            distance += self.distance_matrix[city1, city2]
+        return distance
+
+    # --- ОПЕРАТОР ВОЗМУЩЕНИЯ (из ILS) ---
+    def _perturbation(self, tour, strength=3):
+        """
+        Оператор возмущения (перемешивания) для ILS.
+        Выполняет 'strength' случайных 2-opt обменов.
+        Полезно для разведчиков и выхода из локальных оптимумов.
+        """
+        new_tour = tour[:]
+        n = len(new_tour)
+        for _ in range(strength):
+            # Выбираем два случайных индекса
+            i, k = sorted(random.sample(range(n), 2))
+            if i == k: 
+                continue
+            # Выполняем 2-opt обмен (инверсию подмаршрута)
+            new_tour[i:k+1] = new_tour[i:k+1][::-1]
+        return new_tour
+
+    def _two_opt_swap(self, tour, i, k):
+        """Выполняет 2-opt обмен (инверсию подмаршрута) - из ILS."""
+        new_tour = tour[:]
+        new_tour[i:k+1] = new_tour[i:k+1][::-1]
+        return new_tour
+
     # --- ИЗМЕНЁННЫЙ МЕТОД ЗАВЕРШЕНИЯ ---
     def run_algorithm(self, max_iterations):
         """
@@ -104,9 +171,12 @@ class ABCAlgorithm:
 
                 # Локальный поиск вокруг текущего лучшего решения
                 if self.local_search_interval > 0 and iteration % self.local_search_interval == 0:
-                    self._local_2opt_search()
+                    self._local_2opt_search_global()
 
-                self.global_history.append(1/self.best_fitness - self.optimal_length)
+                # Проверка на None для distance_matrix
+                if self.distance_matrix is not None:
+                    current_distance = 1.0 / self.best_fitness if self.best_fitness > 0 else float('inf')
+                    self.global_history.append(current_distance - self.optimal_length)
 
                 if self.best_fitness > old_best:
                     self.wait = 0
@@ -121,7 +191,8 @@ class ABCAlgorithm:
 
                 if iteration % 20 == 0:
                     elapsed = self.get_formatted_time()
-                    print(f"Iteration {iteration}. Time: {elapsed}. Best distance = {1 / self.best_fitness:.2f}")
+                    best_dist_str = f"{1 / self.best_fitness:.2f}" if self.best_fitness > 0 else "inf"
+                    print(f"Iteration {iteration}. Time: {elapsed}. Best distance = {best_dist_str}")
             if self.visualization:
                 self.plot_convergence(self.global_history)
             return self.best_solution, self.best_fitness
@@ -153,7 +224,26 @@ class ABCAlgorithm:
         num_random = self.num_employed_bees - num_heuristic
         
         # Эвристическая инициализация (если есть матрица расстояний)
-        if self.distance_matrix is not None:
+        # ВАЖНО: Добавляем случайные обмены к эвристическим решениям, чтобы они не были слишком хорошими
+        if self.distance_matrix is not None and TSP_OPTIMIZATIONS_AVAILABLE:
+            for i in range(num_heuristic):
+                if i % 3 == 0:
+                    solution = nearest_neighbor_init(self.distance_matrix, random_start=False)
+                elif i % 3 == 1:
+                    solution = greedy_init(self.distance_matrix)
+                else:
+                    solution = nearest_neighbor_init(self.distance_matrix, random_start=True)
+                
+                # "Портим" эвристическое решение случайными обменами, чтобы оно не было слишком хорошим
+                # Применяем несколько случайных 2-opt обменов
+                num_swaps = max(1, len(solution) // 20)  # Примерно 5% от размера
+                for _ in range(num_swaps):
+                    idx1, idx2 = sorted(random.sample(range(len(solution)), 2))
+                    solution[idx1:idx2+1] = solution[idx1:idx2+1][::-1]
+                
+                initial_solutions.append(solution)
+        elif self.distance_matrix is not None:
+            # Fallback на старые методы если модуль не доступен
             for i in range(num_heuristic):
                 if i % 3 == 0:
                     solution = self._nearest_neighbor_init()
@@ -161,6 +251,13 @@ class ABCAlgorithm:
                     solution = self._greedy_init()
                 else:
                     solution = self._nearest_neighbor_init(random_start=True)
+                
+                # "Портим" эвристическое решение случайными обменами
+                num_swaps = max(1, len(solution) // 20)
+                for _ in range(num_swaps):
+                    idx1, idx2 = sorted(random.sample(range(len(solution)), 2))
+                    solution[idx1:idx2+1] = solution[idx1:idx2+1][::-1]
+                
                 initial_solutions.append(solution)
         else:
             # Если матрицы нет, все случайные
@@ -172,20 +269,28 @@ class ABCAlgorithm:
             initial_solutions.append(solution)
 
         # Подготовка задач для пула
-        tasks = [(sol, self.fitness_function) for sol in initial_solutions]
+        tasks = [(sol, self.distance_matrix) for sol in initial_solutions]
 
         # Вычисление фитнеса в пуле
         fitness_results = list(self.executor.map(compute_fitness_task, tasks))
 
         # Создание пчёл
         for i, solution in enumerate(initial_solutions):
-            employed_bee = EmployedBee(solution, self.fitness_function, initial_fitness=fitness_results[i])
+            employed_bee = EmployedBee(solution, self.fitness_function, initial_fitness=fitness_results[i], distance_matrix=self.distance_matrix)
             self.employed_bees.append(employed_bee)
 
             # Обновление лучшего решения
             if employed_bee.fitness > self.best_fitness:
                 self.best_solution = employed_bee.solution
                 self.best_fitness = employed_bee.fitness
+        
+        # Выводим начальное лучшее решение для контроля
+        if self.distance_matrix is not None:
+            initial_distance = 1.0 / self.best_fitness if self.best_fitness > 0 else float('inf')
+            print(f"Начальное лучшее расстояние: {initial_distance:.2f} (оптимум: {self.optimal_length})")
+            if self.optimal_length > 0:
+                initial_gap = ((initial_distance - self.optimal_length) / self.optimal_length) * 100
+                print(f"Начальный gap: {initial_gap:.2f}%")
 
     # --- ИЗМЕНЁННАЯ ФАЗА РАБОЧИХ ПЧЁЛ ---
     def employed_bee_phase(self) -> None:
@@ -196,7 +301,7 @@ class ABCAlgorithm:
         for bee in self.employed_bees:
             # Подготовка задачи для explore
             # explore теперь возвращает (is_improved, new_solution, new_fitness)
-            future = self.executor.submit(bee.explore_async, self.employed_bees, self.fitness_function)
+            future = self.executor.submit(bee.explore_async, self.employed_bees, self.distance_matrix)
             futures.append(future)
 
         # Сбор результатов
@@ -211,17 +316,6 @@ class ABCAlgorithm:
                 if new_fitness > self.best_fitness:
                     self.best_solution = new_solution.copy()
                     self.best_fitness = new_fitness
-            else:
-                bee.trial += 1
-        """
-        Фаза занятых пчел: рабочие пчелы улучшают свои решения.
-        Обновляет счетчик trial и проверяет на улучшение решения.
-        """
-        for bee in self.employed_bees:
-            is_improved = bee.explore(self.employed_bees)  # Захватываем флаг
-            if is_improved and bee.fitness > self.best_fitness:
-                self.best_solution = bee.solution
-                self.best_fitness = bee.fitness
             else:
                 bee.trial += 1
 
@@ -239,49 +333,19 @@ class ABCAlgorithm:
         # Создаём задачи для onlooker bees
         onlooker_tasks = []
         for _ in range(self.num_onlooker_bees):
-            # Создаем пчелу-наблюдателя с случайным начальным решением
             initial_solution = random.choice(employed_solutions)
-            onlooker_tasks.append((initial_solution, employed_solutions, self.fitness_function))
+            onlooker_tasks.append((initial_solution, employed_solutions, self.distance_matrix))
 
         # Запускаем задачи асинхронно
-        futures = [self.executor.submit(OnlookerBee.explore_async_static, task) for task in onlooker_tasks]
+        futures = [self.executor.submit(OnlookerBee.explore_async_static_wrapper, task) for task in onlooker_tasks]
 
         # Сбор результатов
         results = [future.result() for future in futures]
 
         # Создание объектов OnlookerBee с обновлёнными данными
-        self.onlooker_bees = []
         for solution, fitness in results:
-            onlooker_bee = OnlookerBee(solution, self.fitness_function, initial_fitness=fitness)
+            onlooker_bee = OnlookerBee(solution, self.fitness_function, initial_fitness=fitness, distance_matrix=self.distance_matrix)
             self.onlooker_bees.append(onlooker_bee)
-
-        self._upgrade_solutions()
-        """
-        Фаза пчел-наблюдателей. Выбирает решения на основе вероятности и пытается их улучшить.
-        """
-        if not self.employed_bees:
-            return
-        self.onlooker_bees.clear() # Очищаем список от пчёл прошлой итерации
-        # 1. Подготовка списка решений и их фитнес-значений
-        solutions = [bee.solution for bee in self.employed_bees]
-        # Значения фитнеса хранятся в классах пчел
-
-        # 2. Вычисление вероятностей выбора
-        # Данный шаг уже предусмотрен в классе Bee
-
-        # 3. Создаем временный список для новых решений
-        # у нас уже есть для этого self.onlooker_bees
-
-        # 4. Каждая пчела-наблюдатель выбирает и улучшает решение
-        for bee_index in range(self.num_onlooker_bees):
-            # Создаем пчелу-наблюдателя с случайным начальным решением
-            onlooker = OnlookerBee(random.choice(solutions), self.fitness_function)
-
-            # Пчела выбирает и улучшает решение
-            improved = onlooker.explore(solutions)
-
-            # Добавляем пчелу в массив новых решений
-            self.onlooker_bees.append(onlooker)
 
         self._upgrade_solutions()
 
@@ -319,6 +383,7 @@ class ABCAlgorithm:
     def scout_bee_phase(self):
         """
         Фаза разведчиков: заменяет решения, которые не улучшались дольше limit итераций, с многопоточностью.
+        Использует оператор возмущения из ILS для более интеллектуального поиска.
         """
         scouts_to_update = []
         for i, bee in enumerate(self.employed_bees):
@@ -328,11 +393,21 @@ class ABCAlgorithm:
         if not scouts_to_update:
              return # Нечего обновлять
 
-        # Генерируем новые решения
-        new_solutions = [self._generate_random_solution() for _ in scouts_to_update]
+        # Генерируем новые решения (смешанная стратегия: часть случайных, часть с возмущением)
+        new_solutions = []
+        for idx in scouts_to_update:
+            bee = self.employed_bees[idx]
+            # 50% - случайное решение, 50% - возмущение лучшего решения
+            if random.random() < 0.5 and self.best_solution is not None:
+                # Используем оператор возмущения из ILS для выхода из локальных оптимумов
+                perturbation_strength = max(3, len(self.best_solution) // 10)
+                new_solution = self._perturbation(self.best_solution, strength=perturbation_strength)
+            else:
+                new_solution = self._generate_random_solution()
+            new_solutions.append(new_solution)
 
         # Подготовка задач для вычисления фитнеса
-        tasks = [(sol, self.fitness_function) for sol in new_solutions]
+        tasks = [(sol, self.distance_matrix) for sol in new_solutions]
 
         # Вычисление фитнеса в пуле
         new_fitnesses = list(self.executor.map(compute_fitness_task, tasks))
@@ -348,24 +423,6 @@ class ABCAlgorithm:
             if fit > self.best_fitness:
                 self.best_solution = sol.copy()
                 self.best_fitness = fit
-        """
-        Фаза разведчиков: заменяет решения, которые не улучшались дольше limit итераций
-        """
-        for i, bee in enumerate(self.employed_bees):
-            if bee.trial > self.limit:
-                # Генерируем совершенно новое случайное решение
-                new_solution = self._generate_random_solution()
-                new_fitness = self.fitness_function(new_solution)
-
-                # Заменяем "застрявшее" решение
-                self.employed_bees[i].solution = new_solution
-                self.employed_bees[i].fitness = new_fitness
-                self.employed_bees[i].trial = 0
-
-                # Проверяем, не нашли ли мы новое лучшее решение
-                if new_fitness > self.best_fitness:
-                    self.best_solution = new_solution.copy()
-                    self.best_fitness = new_fitness
 
     def _generate_random_solution(self):
         """Генерирует полностью случайное решение для задачи коммивояжера"""
@@ -376,7 +433,8 @@ class ABCAlgorithm:
     # --- ЭВРИСТИКИ ИНИЦИАЛИЗАЦИИ ---
     def _nearest_neighbor_init(self, random_start=False):
         """
-        Nearest Neighbor эвристика: начинаем с случайного города и всегда идём к ближайшему непосещённому.
+        Nearest Neighbor эвристика (улучшенная версия из ILS): 
+        начинаем с случайного города и всегда идём к ближайшему непосещённому.
         
         :param random_start: Если True, стартовый город выбирается случайно, иначе с 0.
         :return: Маршрут, построенный по эвристике ближайшего соседа.
@@ -388,21 +446,28 @@ class ABCAlgorithm:
         unvisited = set(range(self.lb, self.ub + 1))
         tour = []
         
-        # Выбираем стартовый город
+        # Выбираем стартовый город (как в ILS)
         if random_start:
-            current = random.choice(list(unvisited))
+            start_node = random.randint(self.lb, self.ub)
         else:
-            current = self.lb
+            start_node = self.lb
         
-        tour.append(current)
-        unvisited.remove(current)
+        tour.append(start_node)
+        unvisited.remove(start_node)
+        current_node = start_node
         
-        # Строим тур, всегда выбирая ближайший непосещённый город
+        # Строим тур, всегда выбирая ближайший непосещённый город (оптимизированный доступ через numpy)
         while unvisited:
-            nearest = min(unvisited, key=lambda city: self.distance_matrix[current][city])
-            tour.append(nearest)
-            unvisited.remove(nearest)
-            current = nearest
+            min_dist = float('inf')
+            next_node = -1
+            for neighbor in unvisited:
+                dist = self.distance_matrix[current_node, neighbor]
+                if dist < min_dist:
+                    min_dist = dist
+                    next_node = neighbor
+            tour.append(next_node)
+            unvisited.remove(next_node)
+            current_node = next_node
         
         return tour
 
@@ -427,7 +492,7 @@ class ABCAlgorithm:
         while unvisited:
             if len(tour) == 1:
                 # Если только один город, выбираем ближайший к нему
-                nearest = min(unvisited, key=lambda city: self.distance_matrix[tour[0]][city])
+                nearest = min(unvisited, key=lambda city: self.distance_matrix[tour[0], city])
                 tour.append(nearest)
                 unvisited.remove(nearest)
             else:
@@ -435,11 +500,11 @@ class ABCAlgorithm:
                 start_city = tour[0]
                 end_city = tour[-1]
                 
-                nearest_to_start = min(unvisited, key=lambda city: self.distance_matrix[start_city][city])
-                nearest_to_end = min(unvisited, key=lambda city: self.distance_matrix[end_city][city])
+                nearest_to_start = min(unvisited, key=lambda city: self.distance_matrix[start_city, city])
+                nearest_to_end = min(unvisited, key=lambda city: self.distance_matrix[end_city, city])
                 
-                dist_to_start = self.distance_matrix[start_city][nearest_to_start]
-                dist_to_end = self.distance_matrix[end_city][nearest_to_end]
+                dist_to_start = self.distance_matrix[start_city, nearest_to_start]
+                dist_to_end = self.distance_matrix[end_city, nearest_to_end]
                 
                 if dist_to_start < dist_to_end:
                     tour.insert(0, nearest_to_start)
@@ -459,34 +524,73 @@ class ABCAlgorithm:
         new_solution[i:j + 1] = reversed(new_solution[i:j + 1])
         return new_solution
 
-    def _local_2opt_search(self):
+    # --- ЛОКАЛЬНЫЙ ПОИСК И ЭЛИТИЗМ (ИСПОЛЬЗУЕМ НОВЫЙ 2-OPT) ---
+    def _local_2opt_search_global(self):
         """
-        Несколько итераций локального поиска 2-opt вокруг текущего лучшего решения.
-        Работает жадно: принимает только улучшающие ходы.
+        Применяет высокоэффективный 2-opt локальный поиск к лучшему решению.
         """
-        if self.best_solution is None:
+        if self.best_solution is None or self.distance_matrix is None:
             return
 
-        current_solution = self.best_solution.copy()
-        current_fitness = self.best_fitness
+        if TSP_OPTIMIZATIONS_AVAILABLE:
+            # Используем импортированную функцию local_search_2opt
+            new_solution, new_distance = local_search_2opt(self.best_solution, self.distance_matrix)
+            
+            # Фитнес - это обратная величина расстояния
+            new_fitness = 1.0 / new_distance
+        else:
+            # Fallback на старый метод
+            current_solution = self.best_solution.copy()
+            n = len(current_solution)
+            
+            while True:
+                best_improvement = 0
+                best_i, best_k = -1, -1
 
-        for _ in range(self.local_search_iterations):
-            candidate = self._two_opt_move(current_solution)
-            candidate_fitness = self.fitness_function(candidate)
-            if candidate_fitness > current_fitness:
-                current_solution = candidate
-                current_fitness = candidate_fitness
+                for i in range(n - 1):
+                    for k in range(i + 1, n):
+                        i_prev = (i - 1) % n
+                        k_next = (k + 1) % n
+
+                        A = current_solution[i_prev]
+                        B = current_solution[i]
+                        C = current_solution[k]
+                        D = current_solution[k_next]
+
+                        if i_prev == k or i == k_next:
+                            continue
+
+                        old_dist = self.distance_matrix[A, B] + self.distance_matrix[C, D]
+                        new_dist = self.distance_matrix[A, C] + self.distance_matrix[B, D]
+                        
+                        improvement = old_dist - new_dist
+
+                        if improvement > best_improvement:
+                            best_improvement = improvement
+                            best_i, best_k = i, k
+
+                if best_improvement > 0:
+                    current_solution[best_i:best_k+1] = list(reversed(current_solution[best_i:best_k+1]))
+                else:
+                    break
+
+            new_solution = current_solution
+            new_fitness = self.fitness_function(new_solution)
 
         # Если локальный поиск улучшил глобальное лучшее — обновляем и часть популяции
-        if current_fitness > self.best_fitness:
-            self.best_solution = current_solution.copy()
-            self.best_fitness = current_fitness
+        if new_fitness > self.best_fitness:
+            self.best_solution = new_solution
+            self.best_fitness = new_fitness
 
             # Немного распространяем улучшение на популяцию
             num_to_update = max(1, int(self.elitism_rate * len(self.employed_bees)))
-            for bee in sorted(self.employed_bees, key=lambda b: b.fitness)[:num_to_update]:
-                bee.solution = current_solution.copy()
-                bee.fitness = current_fitness
+            
+            # Находим худших пчел для замены
+            worst_bees = sorted(self.employed_bees, key=lambda b: b.fitness)[:num_to_update]
+            
+            for bee in worst_bees:
+                bee.solution = new_solution.copy()
+                bee.fitness = new_fitness
                 bee.trial = 0
 
     def _apply_elitism(self):

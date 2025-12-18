@@ -7,12 +7,13 @@ class Bee(ABC):
     Все типы пчел (рабочие, наблюдатели, разведчики) наследуются от этого класса.
     """
 
-    def __init__(self, solution, fitness_function, initial_fitness=None):
+    def __init__(self, solution, fitness_function, initial_fitness=None, distance_matrix=None):
         """
         Инициализация пчелы.
 
         :param solution: Текущее решение пчелы (например, маршрут в задаче коммивояжёра).
         :param fitness_function: Функция, которая оценивает качество решения (фитнес-функция).
+        :param distance_matrix: Матрица расстояний для TSP (опционально).
         """
         self.solution = solution
         self.fitness_function = fitness_function
@@ -22,6 +23,7 @@ class Bee(ABC):
             self.fitness = self.calculate_fitness()
         # Счетчик неудачных исследований
         self.trial = 0
+        self.distance_matrix = distance_matrix
 
     def calculate_fitness(self):
         """
@@ -56,7 +58,7 @@ class Bee(ABC):
 
     # --- НОВЫЙ АБСТРАКТНЫЙ МЕТОД ДЛЯ АСИНХРОННОГО ВАРИАНТА ---
     @abstractmethod
-    def explore_async(self, other_solutions, fitness_function):
+    def explore_async(self, other_solutions, distance_matrix):
         """
         Асинхронная версия explore, возвращает (is_improved, new_solution, new_fitness).
         """
