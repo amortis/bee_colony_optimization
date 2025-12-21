@@ -125,7 +125,8 @@ def main():
             use_parallel=True,
             num_workers=16,
             use_gpu=True,
-            optimal_value=optimal
+            optimal_value=optimal,
+            visualization=True
         )
 
         best_tour, best_distance = abc_ils.run(max_iterations=params['max_iterations'])

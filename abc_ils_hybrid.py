@@ -53,6 +53,7 @@ class ABCTSPILS:
         num_workers: int = None,
         use_gpu: bool = False,
         optimal_value: Optional[float] = None,
+        visualization: bool = True,
     ):
         # матрица расстояний как numpy float64 (из ILS)
         self.distance_matrix = np.asarray(distance_matrix, dtype=np.float64)
@@ -97,6 +98,7 @@ class ABCTSPILS:
         self.best_distance: float = float("inf")
 
         self.history: List[float] = []
+        self.visualization = visualization
 
         self.start_time: float | None = None
         self.end_time: float | None = None
@@ -373,7 +375,7 @@ class ABCTSPILS:
                       f"no improvement for {self.patience} iterations.")
                 break
 
-            if it % 30 == 0:
+            if it % 50 == 0:
                 print(
                     f"Iteration {it}: best distance = {self.best_distance:.2f}, "
                     f"time = {self.get_formatted_time()}, "
@@ -384,10 +386,11 @@ class ABCTSPILS:
         assert self.best_tour is not None
         print(f"\nFinished. Best distance = {self.best_distance:.2f}, "
               f"time = {self.get_formatted_time()}")
-        
-        #Автоматическая визуализация сходимости
-        if len(self.history) > 0:
-             self.plot_convergence(optimal_value=self.optimal_value)
+
+        if self.visualization:
+            #Автоматическая визуализация сходимости
+            if len(self.history) > 0:
+                 self.plot_convergence(optimal_value=self.optimal_value)
         
         return self.best_tour, self.best_distance
 
@@ -1033,20 +1036,20 @@ class ABCTSPILS:
             print("Нет данных для визуализации (history пуст)")
             return
         
-        plt.figure(figsize=(12, 6))
-
+        # Если нет оптимального значения - не показываем график
+        if optimal_value is None:
+            return
         
-        # Если есть оптимальное значение - показываем разницу
-        if optimal_value is not None:
-            differences = [dist - optimal_value for dist in self.history]
-            plt.subplot(1, 2, 2)
-            plt.plot(differences, linewidth=2, color='red', label='Разница с оптимумом')
-            plt.title("График сходимости", fontsize=14, fontweight='bold')
-            plt.xlabel("Итерация", fontsize=12)
-            plt.ylabel("Разница с оптимумом", fontsize=12)
-            plt.grid(True, alpha=0.3)
-            plt.legend()
-
+        plt.figure(figsize=(10, 6))
+        
+        # Показываем разницу с оптимумом
+        differences = [dist - optimal_value for dist in self.history]
+        plt.plot(differences, linewidth=2, color='red', label='Разница с оптимумом')
+        plt.title("График сходимости", fontsize=14, fontweight='bold')
+        plt.xlabel("Итерация", fontsize=12)
+        plt.ylabel("Разница с оптимумом", fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.legend()
         
         plt.tight_layout()
         plt.show()
