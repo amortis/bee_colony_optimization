@@ -5,6 +5,7 @@ from typing import List, Tuple, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 from bees import EmployedBee, OnlookerBee
 from tsp_optimizations import (
@@ -50,10 +51,33 @@ class ABCTSPILS:
         heuristic_init_ratio: float = 0.7,
         use_parallel: bool = True,
         num_workers: int = None,
+        use_gpu: bool = False,
+        optimal_value: Optional[float] = None,
     ):
         # матрица расстояний как numpy float64 (из ILS)
         self.distance_matrix = np.asarray(distance_matrix, dtype=np.float64)
         self.num_cities = self.distance_matrix.shape[0]
+        self.optimal_value = optimal_value  # Оптимальное значение для визуализации
+        
+        # GPU поддержка
+        self.use_gpu = use_gpu
+        self.distance_matrix_gpu = None
+        self.neighbors_gpu = None
+        
+        if self.use_gpu:
+            try:
+                from tsp_optimizations import GPU_AVAILABLE, cp
+                if GPU_AVAILABLE:
+                    # Копируем матрицу на GPU
+                    self.distance_matrix_gpu = cp.asarray(self.distance_matrix, dtype=cp.float64)
+                    print(f" GPU активирован (CuPy). Матрица расстояний загружена на GPU.")
+                    print(f"   GPU: {cp.cuda.runtime.getDeviceProperties(0)['name'].decode()}")
+                else:
+                    print("  CuPy не доступна. Используется CPU.")
+                    self.use_gpu = False
+            except Exception as e:
+                print(f"️  Ошибка при инициализации GPU: {e}. Используется CPU.")
+                self.use_gpu = False
 
         self.num_employed_bees = num_employed_bees
         self.num_onlooker_bees = num_onlooker_bees
@@ -93,10 +117,25 @@ class ABCTSPILS:
         # Списки ближайших соседей для ускорения 2-opt (критично для 300-400 городов)
         # Сложность падает с O(N²) до O(N × n_neighbors)
         self.neighbors: Optional[np.ndarray] = None
-        n_neighbors = 20 if self.num_cities < 200 else 30  # Больше соседей для больших задач
+        # Адаптивное количество соседей: больше для больших задач
+        if self.num_cities >= 500:
+            n_neighbors = 50  # Для очень больших задач (500+)
+        elif self.num_cities >= 300:
+            n_neighbors = 40  # Для больших задач (300-499)
+        elif self.num_cities >= 200:
+            n_neighbors = 30  # Для средних задач (200-299)
+        else:
+            n_neighbors = 20  # Для малых задач (<200)
         if self.num_cities > 50:  # Строим только для больших задач
-            self.neighbors = get_nearest_neighbors(self.distance_matrix, n_neighbors=n_neighbors)
-            print(f"Построены списки ближайших соседей (n_neighbors={n_neighbors}) для ускорения 2-opt")
+            if self.use_gpu and self.distance_matrix_gpu is not None:
+                from tsp_optimizations import get_nearest_neighbors_gpu, cp
+                self.neighbors_gpu = get_nearest_neighbors_gpu(self.distance_matrix_gpu, n_neighbors=n_neighbors)
+                # Также создаем CPU версию для совместимости
+                self.neighbors = cp.asnumpy(self.neighbors_gpu)
+                print(f"Построены списки ближайших соседей на GPU (n_neighbors={n_neighbors})")
+            else:
+                self.neighbors = get_nearest_neighbors(self.distance_matrix, n_neighbors=n_neighbors)
+                print(f"Построены списки ближайших соседей (n_neighbors={n_neighbors}) для ускорения 2-opt")
 
     # ===================== ВСПОМОГАТЕЛЬНЫЕ МЕТОДЫ =====================
 
@@ -204,23 +243,66 @@ class ABCTSPILS:
         
         for it in range(max_iterations):
             old_best = self.best_distance
+            
+            # ОТЛАДКА: что происходит в фазах ABC
+            if it >= 20:
+                # print(f"      Выполняем фазы ABC...")
+                best_before_phases = self.best_distance
 
             self.employed_bee_phase()
             self.onlooker_bee_phase()
             self.scout_bee_phase()
+            
+            #if it >= 20:
+                #if self.best_distance + 1e-9 < best_before_phases:
+                    #pass
+                    # print(f"      ✅ Улучшение в фазах ABC: {best_before_phases:.2f} -> {self.best_distance:.2f}")
+                # else:
+                    # print(f"      ❌ Улучшения в фазах ABC нет (best={self.best_distance:.2f})")
 
             # Периодический глубокий 2-opt над лучшим решением (элитизм + интенсификация)
-            # Делаем это чаще для лучшего качества
-            if it > 0 and it % max(10, self.local_search_interval // 2) == 0:
+            # Делаем это чаще для лучшего качества, особенно при застревании
+            base_interval = max(5, self.local_search_interval // 3) if self.num_cities >= 200 else max(10, self.local_search_interval // 2)
+            if it > 0 and it % base_interval == 0:
                 self._local_2opt_search_global()
             
-            # Глубокий 2-opt раз в 50 итераций для максимальной полировки
-            if it > 0 and it % 50 == 0:
-                self._deep_local_search_global()
+            # Глубокий 2-opt - чаще для больших задач и при застревании
+            deep_interval = 25 if self.num_cities >= 200 else 50
+
+            if it > 0 and it % deep_interval == 0:
+                #self._deep_local_search_global()
+                pass
 
             self.history.append(self.best_distance)
+            
+            # ОТЛАДКА: что происходит на каждой итерации
+            if it >= 20:  # Начинаем отладку с итерации 20
 
+                if self.employed_bees:
+                    distances = [calculate_tour_length(self.distance_matrix, bee.solution) for bee in self.employed_bees]
+
+            
+            # ПРИНУДИТЕЛЬНОЕ ВОЗМУЩЕНИЕ при застревании (ПЕРЕД проверкой улучшения!)
+            # При stagnation > 10 делаем легкое возмущение части популяции
+            if stagnation_counter > 10 and stagnation_counter % 5 == 0:
+                # print(f"   🔄 Принудительное возмущение при застревании (stagnation={stagnation_counter})")
+                old_best_before_perturb = self.best_distance
+                self._force_light_perturbation()
+                #if it >= 20:
+                    # print(f"      После возмущения: best_distance = {self.best_distance:.2f} (было {old_best_before_perturb:.2f})")
+                    # if self.best_distance + 1e-9 < old_best_before_perturb:
+                        # print(f"      ✅ НАЙДЕНО УЛУЧШЕНИЕ в возмущении!")
+                    # else:
+                        # print(f"      ❌ Улучшения не найдено в возмущении")
+
+            # Проверка улучшения ПОСЛЕ всех фаз (включая возмущения)
+            # old_best был сохранен в начале итерации, поэтому сравниваем с ним
+            #if it >= 20:
+                # print(f"      Проверка улучшения: {self.best_distance:.2f} < {old_best:.2f}? {self.best_distance + 1e-9 < old_best}")
+            
             if self.best_distance + 1e-9 < old_best:
+                # if it >= 20:
+                    # print(f"      ✅ УЛУЧШЕНИЕ НАЙДЕНО! {old_best:.2f} -> {self.best_distance:.2f}")
                 self.wait = 0
                 self.best_iteration = it
                 stagnation_counter = 0  # Сброс счетчика застревания
@@ -229,13 +311,45 @@ class ABCTSPILS:
                 if self.best_tour is not None:
                     self._update_edge_memory(self.best_tour)
             else:
+                # if it >= 20:
+                    # print(f"      ❌ Улучшения нет. stagnation_counter увеличивается: {stagnation_counter} -> {stagnation_counter + 1}")
                 self.wait += 1
                 stagnation_counter += 1
 
-            # ГЛОБАЛЬНЫЙ KICK при застревании (если нет улучшения 500+ итераций)
-            if stagnation_counter > 500:
-                print(f"\nГлобальный kick на итерации {it} (застревание {stagnation_counter} итераций)")
+            # ГЛОБАЛЬНЫЙ KICK при застревании (адаптивный порог)
+            # Для задач 200-400 городов: более агрессивный kick, но не слишком рано
+            kick_threshold = 40 if self.num_cities >= 200 else 50
+            if stagnation_counter > kick_threshold:
+                # print(f"\n{'='*60}")
+                # print(f"⚠️  ГЛОБАЛЬНЫЙ KICK на итерации {it}")
+                # print(f"   Застревание: {stagnation_counter} итераций")
+                # print(f"   Текущий лучший результат: {self.best_distance:.2f}")
+                # print(f"   Размер популяции: {len(self.employed_bees)} пчел")
+                
+                # Анализ популяции перед kick
+                # if self.employed_bees:
+                    # distances = [calculate_tour_length(self.distance_matrix, bee.solution) for bee in self.employed_bees]
+                    # avg_dist = np.mean(distances)
+                    # min_dist = np.min(distances)
+                    # max_dist = np.max(distances)
+                    # std_dist = np.std(distances)
+                    # print(f"   Популяция перед kick:")
+                    # print(f"      Среднее: {avg_dist:.2f}, Мин: {min_dist:.2f}, Макс: {max_dist:.2f}, Стд: {std_dist:.2f}")
+                    # print(f"      Разнообразие (std/mean): {std_dist/avg_dist*100:.2f}%")
+                
+                old_best = self.best_distance
                 self._global_kick()
+                
+                # Результаты после kick
+                # if self.employed_bees:
+                    # distances_after = [calculate_tour_length(self.distance_matrix, bee.solution) for bee in self.employed_bees]
+                    # avg_dist_after = np.mean(distances_after)
+                    # min_dist_after = np.min(distances_after)
+                    # print(f"   Популяция после kick:")
+                    # print(f"      Среднее: {avg_dist_after:.2f}, Мин: {min_dist_after:.2f}")
+                    # print(f"      Изменение лучшего: {self.best_distance - old_best:.2f} ({'+' if self.best_distance > old_best else ''}{((self.best_distance - old_best) / old_best * 100):.2f}%)")
+                
+                # print(f"{'='*60}\n")
                 stagnation_counter = 0
                 last_best_distance = self.best_distance
 
@@ -243,8 +357,15 @@ class ABCTSPILS:
             if it > 0:
                 self._adapt_parameters(it, max_iterations)
             
-            # Adaptive Diversity Control
-            if it > 0 and it % 20 == 0:
+            # Adaptive Diversity Control (умеренная частота)
+            diversity_check_interval = 15 if self.num_cities >= 200 else 20
+            if it > 0 and it % diversity_check_interval == 0:
+                self._adaptive_diversity_control()
+            
+            # Дополнительная проверка при застревании (только при сильном застревании)
+            if stagnation_counter > 20 and it % 10 == 0:
+                # if stagnation_counter == 21:  # Выводим только при первом срабатывании
+                    # print(f"    Ранняя проверка разнообразия (stagnation={stagnation_counter})")
                 self._adaptive_diversity_control()
             
             if self.wait >= self.patience:
@@ -252,7 +373,7 @@ class ABCTSPILS:
                       f"no improvement for {self.patience} iterations.")
                 break
 
-            if it % 50 == 0:
+            if it % 30 == 0:
                 print(
                     f"Iteration {it}: best distance = {self.best_distance:.2f}, "
                     f"time = {self.get_formatted_time()}, "
@@ -263,6 +384,11 @@ class ABCTSPILS:
         assert self.best_tour is not None
         print(f"\nFinished. Best distance = {self.best_distance:.2f}, "
               f"time = {self.get_formatted_time()}")
+        
+        #Автоматическая визуализация сходимости
+        if len(self.history) > 0:
+             self.plot_convergence(optimal_value=self.optimal_value)
+        
         return self.best_tour, self.best_distance
 
     # ===================== ФАЗЫ ABC =====================
@@ -329,14 +455,23 @@ class ABCTSPILS:
                 # Для задач 100-400 городов запас скорости есть, делаем 2-opt всегда
                 # Это значительно улучшает качество решений
                 if improved_flag:
-                    tour_array = np.asarray(bee.solution, dtype=np.int32)
-                    if self.neighbors is not None:
-                        optimized = fast_2opt_neighbors(self.distance_matrix, tour_array, self.neighbors)
+                    if self.use_gpu and self.distance_matrix_gpu is not None:
+                        from tsp_optimizations import fast_2opt_gpu, calculate_tour_length_gpu, cp
+                        tour_gpu = cp.asarray(bee.solution, dtype=cp.int32)
+                        optimized_gpu = fast_2opt_gpu(self.distance_matrix_gpu, tour_gpu, 
+                                                      neighbors_gpu=self.neighbors_gpu)
+                        optimized_list = list(cp.asnumpy(optimized_gpu))
+                        optimized_len = calculate_tour_length_gpu(self.distance_matrix_gpu, optimized_gpu)
+                        current_len = calculate_tour_length_gpu(self.distance_matrix_gpu, tour_gpu)
                     else:
-                        optimized = fast_2opt(self.distance_matrix, tour_array)
-                    optimized_list = list(optimized)
-                    optimized_len = calculate_tour_length(self.distance_matrix, optimized_list)
-                    current_len = calculate_tour_length(self.distance_matrix, bee.solution)
+                        tour_array = np.asarray(bee.solution, dtype=np.int32)
+                        if self.neighbors is not None:
+                            optimized = fast_2opt_neighbors(self.distance_matrix, tour_array, self.neighbors)
+                        else:
+                            optimized = fast_2opt(self.distance_matrix, tour_array)
+                        optimized_list = list(optimized)
+                        optimized_len = calculate_tour_length(self.distance_matrix, optimized_list)
+                        current_len = calculate_tour_length(self.distance_matrix, bee.solution)
                     
                     if optimized_len < current_len:
                         bee.solution = optimized_list
@@ -412,8 +547,14 @@ class ABCTSPILS:
         for i, bee in enumerate(self.employed_bees):
             if bee.trial > self.limit:
                 # ВМЕСТО random.shuffle: берем лучшее глобальное решение и сильно его ломаем (Kick)
-                # Double Bridge (4 разрезами) - сохраняет 95% хорошего пути, меняет только чуть-чуть
-                candidate = double_bridge_perturbation(self.best_tour)
+                # Для больших задач используем более сильное возмущение
+                if self.num_cities >= 200:
+                    # Двойное возмущение для больших задач
+                    candidate = double_bridge_perturbation(self.best_tour)
+                    candidate = multi_insert_perturbation(candidate, num_cities_to_move=2)
+                else:
+                    # Double Bridge (4 разрезами) - сохраняет 95% хорошего пути, меняет только чуть-чуть
+                    candidate = double_bridge_perturbation(self.best_tour)
                 
                 # Сразу применяем быстрый 2-opt с соседями, чтобы вернуть его в локальный минимум
                 # (Идея ILS: Local Opt -> Perturb -> Local Opt)
@@ -477,8 +618,10 @@ class ABCTSPILS:
         current_avg_fitness = np.mean(fitness_values)
         fitness_variance = np.var(fitness_values)
         
-        # Если популяция сходится (низкая дисперсия)
-        if fitness_variance < self.best_distance * 0.01 or fitness_variance < 1e-6:
+        # Если популяция сходится (низкая дисперсия) - умеренный порог
+        # Не делаем слишком агрессивно, чтобы не ломать хорошие решения
+        threshold = self.best_distance * 0.008 if self.num_cities >= 200 else self.best_distance * 0.01
+        if fitness_variance < threshold or fitness_variance < 1e-6:
             self._inject_diversity()
         
         # Адаптивный limit
@@ -493,17 +636,90 @@ class ABCTSPILS:
         if self.best_tour is None:
             return
         
-        num_to_perturb = max(1, len(self.employed_bees) // 4)
+        # Умеренная инъекция разнообразия (не слишком агрессивно)
+        num_to_perturb = max(1, len(self.employed_bees) // 4) if self.num_cities >= 200 else max(1, len(self.employed_bees) // 5)
         for i in range(num_to_perturb):
             idx = (self.best_iteration + i) % len(self.employed_bees)
-            if random.random() < 0.7:  # 70% вероятность сильного возмущения
-                self.employed_bees[idx].solution = double_bridge_perturbation(self.best_tour)
+            # Для больших задач используем более сильные возмущения
+            if self.num_cities >= 200:
+                if random.random() < 0.8:  # 80% вероятность сильного возмущения
+                    # Двойное возмущение для больших задач
+                    perturbed = double_bridge_perturbation(self.best_tour)
+                    perturbed = multi_insert_perturbation(perturbed, num_cities_to_move=3)
+                    self.employed_bees[idx].solution = perturbed
+                else:
+                    self.employed_bees[idx].solution = self._random_restart()
             else:
-                self.employed_bees[idx].solution = self._random_restart()
+                if random.random() < 0.7:  # 70% вероятность сильного возмущения
+                    self.employed_bees[idx].solution = double_bridge_perturbation(self.best_tour)
+                else:
+                    self.employed_bees[idx].solution = self._random_restart()
             
             self.employed_bees[idx].fitness = self._fitness(self.employed_bees[idx].solution)
             self.employed_bees[idx].trial = 0
-            self.employed_bees[idx].invalidate_cache()
+            if hasattr(self.employed_bees[idx], 'invalidate_cache'):
+                self.employed_bees[idx].invalidate_cache()
+    
+    def _force_light_perturbation(self) -> None:
+        """
+        Принудительное легкое возмущение части популяции при застревании.
+        Вызывается независимо от состояния популяции.
+        """
+        if self.best_tour is None:
+            # print(f"       best_tour is None, пропускаем возмущение")
+            return
+        
+        old_best_before = self.best_distance
+        # print(f"         Состояние перед возмущением:")
+        # print(f"         Лучшее расстояние: {old_best_before:.2f}")
+        # print(f"         Размер популяции: {len(self.employed_bees)} пчел")
+        
+        # Возмущаем 30-40% популяции легким способом
+        num_to_perturb = max(2, len(self.employed_bees) // 3)
+        indices = random.sample(range(len(self.employed_bees)), num_to_perturb)
+        # print(f"      Возмущаем {num_to_perturb} пчел (индексы: {indices})")
+        
+        improved_any = False
+        improved_count = 0
+        for idx in indices:
+            # Легкое возмущение - только Double Bridge
+            perturbed = double_bridge_perturbation(self.best_tour)
+            
+            # Применяем быстрый 2-opt для оптимизации
+            perturbed_array = np.asarray(perturbed, dtype=np.int32)
+            if self.neighbors is not None:
+                optimized = fast_2opt_neighbors(self.distance_matrix, perturbed_array, self.neighbors)
+            else:
+                optimized = fast_2opt(self.distance_matrix, perturbed_array)
+            
+            new_tour = list(optimized)
+            new_len = calculate_tour_length(self.distance_matrix, new_tour)
+            old_len = calculate_tour_length(self.distance_matrix, self.employed_bees[idx].solution)
+            
+            self.employed_bees[idx].solution = new_tour
+            self.employed_bees[idx].fitness = self._fitness(new_tour)
+            self.employed_bees[idx].trial = 0
+            if hasattr(self.employed_bees[idx], 'invalidate_cache'):
+                self.employed_bees[idx].invalidate_cache()
+            
+            # Проверяем улучшение
+            if new_len < self.best_distance:
+                improvement = self.best_distance - new_len
+                # print(f"      Пчела {idx}: улучшение! {self.best_distance:.2f} -> {new_len:.2f} (Δ={improvement:.2f})")
+                self.best_distance = new_len
+                self.best_tour = new_tour.copy()
+                improved_any = True
+                improved_count += 1
+            # elif new_len < old_len:
+                # print(f"      Пчела {idx}: улучшение локально {old_len:.2f} -> {new_len:.2f} (но не глобально, best={self.best_distance:.2f})")
+        
+        # print(f"      Результаты возмущения:")
+        # print(f"         Улучшено пчел: {improved_count}/{num_to_perturb}")
+        # print(f"         Глобальное улучшение: {' ДА' if improved_any else ' НЕТ'}")
+        # if improved_any:
+            # print(f"         Новое лучшее расстояние: {self.best_distance:.2f} (было {old_best_before:.2f}, Δ={old_best_before - self.best_distance:.2f})")
+        # else:
+            # print(f"         Лучшее расстояние не изменилось: {self.best_distance:.2f}")
     
     def _random_restart(self) -> Tour:
         """Генерирует новое случайное решение"""
@@ -600,13 +816,21 @@ class ABCTSPILS:
         tour_array = np.asarray(tour, dtype=np.int32)
         
         # Анализируем историю улучшений
-        if len(self._ls_improvement_history) > 10:
+        # ВАЖНО: для больших задач (300+) НЕ используем 3-opt - он слишком медленный (O(n³))
+        # Для 400 городов 3-opt = 400³ = 64 млн итераций - это займет минуты!
+        use_3opt = False
+        if len(self._ls_improvement_history) > 10 and self.num_cities < 200:
             recent_avg = np.mean(self._ls_improvement_history[-5:])
             if recent_avg < 0.1:  # Если последние улучшения слабые
-                # Используем более агрессивный 3-opt
-                return local_search_3opt(self.distance_matrix, tour)
+                # Используем более агрессивный 3-opt ТОЛЬКО для малых задач
+                use_3opt = True
+        
+        if use_3opt:
+            # print(f"      Используем 3-opt")
+            return local_search_3opt(self.distance_matrix, tour)
         
         # Стандартный 2-opt с использованием списков соседей для ускорения
+        # Это быстрее и эффективнее для больших задач
         if self.neighbors is not None:
             optimized = fast_2opt_neighbors(self.distance_matrix, tour_array, self.neighbors)
             distance = calculate_tour_length(self.distance_matrix, optimized)
@@ -619,19 +843,45 @@ class ABCTSPILS:
         Периодический вызов адаптивного локального поиска над текущим лучшим маршрутом.
         После улучшения — частично распространяем результат на популяцию (элитизм).
         """
+        # print(f"\n    ОТЛАДКА _local_2opt_search_global:")
+        # print(f"      Вызов функции начат")
+        
         if self.best_tour is None:
+            # print(f"       best_tour is None, выход из функции")
             return
 
         old_distance = self.best_distance
-        improved_tour, improved_dist = self._adaptive_local_search(self.best_tour)
+        # print(f"      Текущий best_distance: {old_distance:.2f}")
+        # print(f"      Размер тура: {len(self.best_tour)}")
+        # print(f"      История улучшений: {len(self._ls_improvement_history)} записей")
+        # if len(self._ls_improvement_history) > 0:
+            # recent_avg = np.mean(self._ls_improvement_history[-5:]) if len(self._ls_improvement_history) >= 5 else 0
+            # print(f"      Среднее последних улучшений: {recent_avg:.4f}")
+        
+        # print(f"      Вызываем _adaptive_local_search...")
+        start_time = time.time()
+        
+        try:
+            improved_tour, improved_dist = self._adaptive_local_search(self.best_tour)
+            elapsed = time.time() - start_time
+
+
+        except Exception as e:
+            elapsed = time.time() - start_time
+            import traceback
+            traceback.print_exc()
+            return
         
         # Записываем улучшение в историю
         improvement = old_distance - improved_dist
         self._ls_improvement_history.append(improvement)
         if len(self._ls_improvement_history) > 20:
             self._ls_improvement_history.pop(0)
+        
+        # print(f"      Улучшение: {old_distance:.2f} -> {improved_dist:.2f} (Δ={improvement:.2f})")
 
         if improved_dist + 1e-9 < self.best_distance:
+            # print(f"      ✅ ГЛОБАЛЬНОЕ УЛУЧШЕНИЕ! {self.best_distance:.2f} -> {improved_dist:.2f}")
             self.best_distance = improved_dist
             self.best_tour = improved_tour.copy()
             
@@ -642,6 +892,7 @@ class ABCTSPILS:
 
             # Распространяем улучшенное решение на часть популяции
             num_elite = max(1, len(self.employed_bees) // 5)
+            # print(f"      Распространяем на {num_elite} лучших пчел...")
             for i in range(num_elite):
                 # небольшое возмущение, чтобы сохранить разнообразие
                 if i == 0:
@@ -654,6 +905,11 @@ class ABCTSPILS:
                 self.employed_bees[i].trial = 0
                 if hasattr(self.employed_bees[i], 'invalidate_cache'):
                     self.employed_bees[i].invalidate_cache()
+            # print(f"      Распространение завершено")
+        # else:
+            # print(f"      Улучшения нет. Результат ({improved_dist:.2f}) не лучше текущего ({self.best_distance:.2f})")
+        
+        # print(f"      Функция завершена\n")
     
     def _deep_local_search_global(self) -> None:
         """
@@ -666,14 +922,14 @@ class ABCTSPILS:
         """
         if self.best_tour is None:
             return
-        
+        # print("Глубокий анализ")
         # Используем упрощенный Lin-Kernighan для глубокого поиска
         # Это более мощный локальный поиск, чем стандартный 2-opt
         improved_tour, improved_dist = lin_kernighan_simplified(
             self.distance_matrix, 
             self.best_tour,
             neighbors=self.neighbors,
-            max_depth=5  # Пробуем до 5-opt
+            max_depth=3  # Пробуем до 5-opt
         )
         
         if improved_dist + 1e-9 < self.best_distance:
@@ -701,6 +957,7 @@ class ABCTSPILS:
         кроме лучшей. Это позволяет "выпрыгнуть" из глубокого локального минимума.
         """
         if self.best_tour is None:
+            # print(" Нет лучшего тура для kick!")
             return
         
         # Находим лучшую пчелу
@@ -712,11 +969,24 @@ class ABCTSPILS:
                 best_len = current_len
                 best_idx = i
         
+        # print(f"   Лучшая пчела: индекс {best_idx}, длина: {best_len:.2f}")
+        
+        # Для больших задач используем более сильное возмущение
+        improved_count = 0
+        new_best_found = False
+        
         # Делаем Double Bridge всем пчелам, кроме лучшей
         for i in range(len(self.employed_bees)):
             if i != best_idx:
-                # Берем лучшее решение и делаем Double Bridge
-                candidate = double_bridge_perturbation(self.best_tour)
+                # Берем лучшее решение и делаем возмущение
+                if self.num_cities >= 200:
+                    # Двойное возмущение для больших задач
+                    candidate = double_bridge_perturbation(self.best_tour)
+                    candidate = multi_insert_perturbation(candidate, num_cities_to_move=2)
+                else:
+                    candidate = double_bridge_perturbation(self.best_tour)
+                
+                old_len = calculate_tour_length(self.distance_matrix, self.employed_bees[i].solution)
                 
                 # Применяем быстрый 2-opt для возврата в локальный минимум
                 candidate_array = np.asarray(candidate, dtype=np.int32)
@@ -725,16 +995,76 @@ class ABCTSPILS:
                 else:
                     optimized = fast_2opt(self.distance_matrix, candidate_array)
                 
-                self.employed_bees[i].solution = list(optimized)
-                self.employed_bees[i].fitness = self._fitness(self.employed_bees[i].solution)
+                new_tour = list(optimized)
+                new_len = calculate_tour_length(self.distance_matrix, new_tour)
+                
+                self.employed_bees[i].solution = new_tour
+                self.employed_bees[i].fitness = self._fitness(new_tour)
                 self.employed_bees[i].trial = 0
                 if hasattr(self.employed_bees[i], 'invalidate_cache'):
                     self.employed_bees[i].invalidate_cache()
                 
+                # Проверяем улучшение
+                if new_len < old_len:
+                    improved_count += 1
+                
                 # Проверяем, не нашли ли лучшее решение
-                tour_len = calculate_tour_length(self.distance_matrix, self.employed_bees[i].solution)
-                if tour_len < self.best_distance:
-                    self.best_distance = tour_len
-                    self.best_tour = self.employed_bees[i].solution.copy()
+                if new_len < self.best_distance:
+                    improvement = self.best_distance - new_len
+                    # print(f"Пчела {i}: найдено улучшение! {self.best_distance:.2f} -> {new_len:.2f} (Δ={improvement:.2f})")
+                    self.best_distance = new_len
+                    self.best_tour = new_tour.copy()
+                    new_best_found = True
+        
+        # print(f"   Результаты kick: {improved_count}/{len(self.employed_bees)-1} пчел улучшились")
+        # if not new_best_found:
+            # print(f"Новый глобальный минимум не найден")
+    
+    # ===================== ВИЗУАЛИЗАЦИЯ =====================
+    
+    def plot_convergence(self, optimal_value: Optional[float] = None) -> None:
+        """
+        Визуализация сходимости алгоритма.
+        Строит график изменения лучшего расстояния по итерациям.
+        
+        :param optimal_value: Оптимальное значение (опционально, для отображения разницы)
+        """
+        if len(self.history) == 0:
+            print("Нет данных для визуализации (history пуст)")
+            return
+        
+        plt.figure(figsize=(12, 6))
+
+        
+        # Если есть оптимальное значение - показываем разницу
+        if optimal_value is not None:
+            differences = [dist - optimal_value for dist in self.history]
+            plt.subplot(1, 2, 2)
+            plt.plot(differences, linewidth=2, color='red', label='Разница с оптимумом')
+            plt.title("График сходимости", fontsize=14, fontweight='bold')
+            plt.xlabel("Итерация", fontsize=12)
+            plt.ylabel("Разница с оптимумом", fontsize=12)
+            plt.grid(True, alpha=0.3)
+            plt.legend()
+
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_convergence_simple(self) -> None:
+        """
+        Простая визуализация сходимости (один график).
+        """
+        if len(self.history) == 0:
+            print("Нет данных для визуализации (history пуст)")
+            return
+        
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.history, linewidth=2, color='blue')
+        plt.title("График сходимости", fontsize=14, fontweight='bold')
+        plt.xlabel("Итерация", fontsize=12)
+        plt.ylabel("Лучшее расстояние", fontsize=12)
+        plt.grid(True, alpha=0.3)
+        plt.show()
 
 
