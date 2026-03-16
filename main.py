@@ -1,84 +1,151 @@
-from ABC import ABCAlgorithm
-from matrix_task.distane_matrix import DISTANCE_MATRIX
+from ABC import ABC
+from matrix_task.tsp_task import TspTask
+import pandas as pd
+from typing import Dict
 
 
-# Фитнес-функция
-def fitness_function(solution):
-    total_distance = 0
-    for i in range(len(solution) - 1):
-        total_distance += DISTANCE_MATRIX[solution[i]][solution[i + 1]]
-    total_distance += DISTANCE_MATRIX[solution[-1]][solution[0]]
-    return 1 / total_distance  # Чем больше - тем лучше
-
-def calculate_route_distance(solution) -> int:
-    """Вычисление длины маршрута."""
-    total_distance = 0
-    for i in range(len(solution) - 1):
-        total_distance += DISTANCE_MATRIX[solution[i]][solution[i + 1]]
-    total_distance += DISTANCE_MATRIX[solution[-1]][solution[0]]
-    return total_distance # type: ignore
-
-
-
-# Параметры алгоритма
-lb = 0  # Нумерация городов с 0
-ub = len(DISTANCE_MATRIX) - 1
-num_employed_bees = 130
-num_onlooker_bees = 400
-limit = 100  # Максимальное количество неудач для одной пчелы
-max_iterations = 3500
-patience = 100
-
-# проверки матрицы
-assert len(DISTANCE_MATRIX) > 0, "Матрица пустая"
-assert all(len(row) == len(DISTANCE_MATRIX) for row in DISTANCE_MATRIX), "Матрица не квадратная"
-
-history_results = []
-
-for _ in range(1):
-    # Инициализация и запуск
-    abc = ABCAlgorithm(fitness_function, lb, ub, num_employed_bees, num_onlooker_bees, limit, patience)
-
-    #abc.employed_bee_phase()
-    # Результаты
-    # print("Employed Bee Phase -----------")
-    # print("Лучший маршрут:", abc.best_solution)
-    # print("Длина маршрута:", calculate_route_distance(abc.best_solution))
-    # print("Фитнес:", abc.best_fitness)
-
-    #Информация по пчелам (с trial)
-    #print("\nДетали по рабочим пчелам:")
-    # for i, bee in enumerate(abc.employed_bees):
-    #     print(f"Пчела {i}: Маршрут {bee.solution}, "
-    #           f"Длина {calculate_route_distance(bee.solution)}, "
-    #           f"Фитнес {bee.fitness}, "
-    #           f"Неудач {bee.trial}")
-
-    #abc.onlooker_bee_phase()
-    # Результаты
-    # print("\nOnLooker Bee Phase -----------")
-    # print("Лучший маршрут:", abc.best_solution)
-    # print("Длина маршрута:", calculate_route_distance(abc.best_solution))
-    # print("Фитнес:", abc.best_fitness)
-
-
-    # Информация по пчелам (с trial)
-    #print("\nДетали по пчелам наблюдателями:")
-    # for i, bee in enumerate(abc.onlooker_bees):
-    #     print(f"Пчела {i}: Маршрут {bee.solution}, "
-    #           f"Длина {calculate_route_distance(bee.solution)}, "
-    #           f"Фитнес {bee.fitness}, "
-    #           f"Неудач {bee.trial}")
-
-    #abc.visualisation()
+def get_adaptive_parameters(num_cities: int) -> Dict:
+    """
+    Адаптивно подбирает параметры алгоритма в зависимости от размера задачи.
+    
+    :param num_cities: Количество городов в задаче TSP
+    :return: Словарь с оптимальными параметрами
+    """
+    if num_cities < 100:
+        # Малые задачи (<100 городов)
+        return {
+            'num_employed_bees': 15,
+            'num_onlooker_bees': 20,
+            'limit': 100,
+            'patience': 150,
+            'local_search_interval': 20,
+            'heuristic_init_ratio': 0.8,
+            'max_iterations': 1000
+        }
+    elif num_cities < 200:
+        # Средние задачи (100-199 городов)
+        return {
+            'num_employed_bees': 20,
+            'num_onlooker_bees': 25,
+            'limit': 100,
+            'patience': 200,
+            'local_search_interval': 25,
+            'heuristic_init_ratio': 0.85,
+            'max_iterations': 2000
+        }
+    elif num_cities < 300:
+        # Средне-большие задачи (200-299 городов)
+        return {
+            'num_employed_bees': 15,
+            'num_onlooker_bees': 30,
+            'limit': 150,
+            'patience': 500,
+            'local_search_interval': 30,
+            'heuristic_init_ratio': 0.9,
+            'max_iterations': 3000
+        }
+    elif num_cities < 500:
+        # Большие задачи (300-499 городов)
+        return {
+            'num_employed_bees': 40,
+            'num_onlooker_bees': 50,
+            'limit': 60,
+            'patience': 350,
+            'local_search_interval': 30,
+            'heuristic_init_ratio': 0.95,
+            'max_iterations': 4000
+        }
+    else:
+        # Очень большие задачи (500+ городов)
+        return {
+            'num_employed_bees': max(50, num_cities // 10),  # Масштабируем с размером
+            'num_onlooker_bees': max(60, num_cities // 8),
+            'limit': 50,
+            'patience': 400,
+            'local_search_interval': 35,
+            'heuristic_init_ratio': 0.95,
+            'max_iterations': 5000
+        }
 
 
-    best_solution, best_fitness = abc.run_algorithm(max_iterations)
-    print("\nРезультаты:")
-    print("Лучший маршрут:", best_solution)
-    print("Длина маршрута:", calculate_route_distance(best_solution))
-    print("Фитнес:", best_fitness)
+def main():
+    tasks = [
+        ("st70.tsp", 675),
+        ("rd100.tsp", 7190),
+        ("a280.tsp", 2579),
+        ("lin318.tsp", 42029),
+        ("pa561.tsp", 2763),
+        ("rat575.tsp", 6773),
+        ("eil51.tsp", 426)
+    ]
+    
+    # Красивый вывод через pandas
+    df = pd.DataFrame({
+        '№': range(1, len(tasks) + 1),
+        'Файл': [task[0] for task in tasks],
+        'Оптимальное значение': [task[1] for task in tasks]
+    })
+    print("\nДоступные задачи TSP:")
+    print(df.to_string(index=False))
+    print()
+    task_num = len(tasks)
+    user_choice = input(f"Выберите номер задачи (1-{task_num}): ")
+    numbers = "123456789"
+    while user_choice not in numbers[:task_num]:
+        print("\nНеправильный номер задачи!")
+        print(df.to_string(index=False))
+        user_choice = input(f"\nВыберите номер задачи (1-{task_num}): ")
 
-    history_results.append(calculate_route_distance(best_solution))
+    task_name, optimal = tasks[int(user_choice) - 1]
+    tsp_task = TspTask(task_name, optimal)
+    num_cities = len(tsp_task.distance_matrix)
 
-print(history_results)
+    print("TSPLIB instance loaded.")
+    if optimal is not None:
+        print(f"Known optimal value from TSPLIB (or overridden): {optimal}")
+    
+    # Адаптивный подбор параметров в зависимости от размера задачи
+    params = get_adaptive_parameters(num_cities)
+    print(f"\nПараметры для задачи с {num_cities} городами:")
+    params_df = pd.DataFrame({
+        'Параметр': list(params.keys()),
+        'Значение': list(params.values())
+    })
+    print(params_df.to_string(index=False))
+    print()
+    
+    global_history = []
+    for _ in range(1):
+        abc_ils = ABC(
+            distance_matrix=tsp_task.distance_matrix,
+            num_employed_bees=params['num_employed_bees'],
+            num_onlooker_bees=params['num_onlooker_bees'],
+            limit=params['limit'],
+            patience=params['patience'],
+            local_search_interval=params['local_search_interval'],
+            heuristic_init_ratio=params['heuristic_init_ratio'],
+            use_parallel=False,
+            num_workers=16,
+            use_gpu=False,
+            optimal_value=optimal,
+            visualization=True
+        )
+
+        best_tour, best_distance = abc_ils.run(max_iterations=params['max_iterations'])
+
+        print("\n--- FINAL RESULT ---")
+        print("Best tour:", best_tour)
+        print(f"Best distance: {best_distance:.2f}")
+        if optimal is not None:
+            gap = best_distance - optimal
+            gap_percent = (gap / optimal * 100) if optimal > 0 else 0
+            print(f"Gap to optimal: {gap:.2f} ({gap_percent:.2f}%)")
+
+        global_history.append(best_distance)
+    print(global_history)
+
+
+if __name__ == "__main__":
+    main()
+
+
