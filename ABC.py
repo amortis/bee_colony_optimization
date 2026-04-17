@@ -30,9 +30,10 @@ from tsp_optimizations import (
 Tour = List[int]
 
 
-class ABC:
+class ABCTSPILS:
     """
     Гибридный алгоритм: ABC (Artificial Bee Colony) + идеи из ILS для TSP.
+    ABCTSPILS
 
     - Глобальный поиск: популяционный ABC (employed / onlooker / scout).
     - Локальный поиск: эффективный 2-opt над лучшим туром через интервалы.
@@ -50,7 +51,7 @@ class ABC:
         local_search_interval: int = 50,
         heuristic_init_ratio: float = 0.7,
         use_parallel: bool = True,
-        num_workers: int = None,
+        num_workers: int = None, # type: ignore
         use_gpu: bool = False,
         optimal_value: Optional[float] = None,
         visualization: bool = True,
@@ -836,7 +837,7 @@ class ABC:
         # Это быстрее и эффективнее для больших задач
         if self.neighbors is not None:
             optimized = fast_2opt_neighbors(self.distance_matrix, tour_array, self.neighbors)
-            distance = calculate_tour_length(self.distance_matrix, optimized)
+            distance = calculate_tour_length(self.distance_matrix, optimized) # type: ignore
             return list(optimized), float(distance)
         else:
             return local_search_2opt(self.distance_matrix, tour)

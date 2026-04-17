@@ -1,4 +1,4 @@
-from ABC import ABC
+from ABC import ABCTSPILS
 from matrix_task.tsp_task import TspTask
 import pandas as pd
 from typing import Dict
@@ -70,13 +70,17 @@ def get_adaptive_parameters(num_cities: int) -> Dict:
 
 def main():
     tasks = [
-        ("st70.tsp", 675),
-        ("rd100.tsp", 7190),
         ("a280.tsp", 2579),
+        ("eil51.tsp", 426),
+        ("eil101.tsp", 629),
         ("lin318.tsp", 42029),
         ("pa561.tsp", 2763),
+        ("pr1002.tsp", 259045),
         ("rat575.tsp", 6773),
-        ("eil51.tsp", 426)
+        ("rd100.tsp", 7190),
+        ("rd400.tsp", 7190),
+        ("st70.tsp", 675)
+        
     ]
     
     # Красивый вывод через pandas
@@ -116,7 +120,7 @@ def main():
     
     global_history = []
     for _ in range(1):
-        abc_ils = ABC(
+        abc_ils = ABCTSPILS(
             distance_matrix=tsp_task.distance_matrix,
             num_employed_bees=params['num_employed_bees'],
             num_onlooker_bees=params['num_onlooker_bees'],
