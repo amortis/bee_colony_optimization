@@ -1,0 +1,41 @@
+[package]
+name = "abc_rust"
+version = "0.1.0"
+edition = "2021"
+description = "ABC + ILS hybrid for TSP (Rust port of the Python project, no GPU)"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+rand = "0.8"
+rand_chacha = "0.3"
+clap = { version = "4", features = ["derive"] }
+rayon = "1.10"
+csv = "1.3"
+
+[lib]
+name = "abc_rust"
+path = "src/lib.rs"
+
+[[bin]]
+name = "abc-tsp"
+path = "src/main.rs"
+
+[[bin]]
+name = "abc-benchmark"
+path = "src/bin/benchmark.rs"
+
+[[bin]]
+name = "lkh-run"
+path = "src/bin/lkh_run.rs"
+
+[[bin]]
+name = "abc-main"
+path = "src/bin/interactive.rs"
+
+[[bin]]
+name = "abc-compare"
+path = "src/bin/compare_benchmark.rs"
+
+[[bin]]
+name = "abc-bench-classic-lkh"
+path = "src/bin/benchmark_classic_lkh.rs"
